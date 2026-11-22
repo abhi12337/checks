@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://abhi12337.github.io/checks/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/supabase-rls-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/firestore-rules-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/firebase-database-public-check/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/exposed-api-key-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/openai-key-exposed-in-frontend/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/stripe-webhook-signature-check/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/razorpay-webhook-signature-verification/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/razorpay-payment-signature-verification/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/idor-checker-nextjs/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/server-actions-auth-check/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/mcp-server-security-scanner/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/mcp-json-config-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/cursorrules-hidden-unicode-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/claude-md-security-check/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/llm-api-cost-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/postgres-migration-lock-checker/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/postgres-missing-foreign-key-index/</loc><lastmod>2026-11-23</lastmod></url>
+</urlset>
