@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase: new row violates row-level security policy (fix)</title>
+<meta name="description" content="Why Supabase returns &#x27;new row violates row-level security policy for table&#x27; (42501) on insert, update, upsert or storage upload, and the exact policy that fixes each case.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-new-row-violates-row-level-security-policy/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase: new row violates row-level security policy (fix)">
+<meta property="og:description" content="Why Supabase returns &#x27;new row violates row-level security policy for table&#x27; (42501) on insert, update, upsert or storage upload, and the exact policy that fixes each case.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-new-row-violates-row-level-security-policy/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “new row violates row-level security policy” – causes and fix", "description": "Why Supabase returns 'new row violates row-level security policy for table' (42501) on insert, update, upsert or storage upload, and the exact policy that fixes each case.", "url": "https://abhi12337.github.io/checks/guides/supabase-new-row-violates-row-level-security-policy/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-23"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>Supabase “new row violates row-level security policy” – causes and fix</h1>
+<pre class="error-text"><code>new row violates row-level security policy for table &quot;notes&quot;  (code 42501)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Row Level Security is on for the table, and the row you tried to write did not pass any <code>WITH CHECK</code> rule for the role your request ran as. Postgres refuses the write. It is not a bug in your client library: the database is doing what the policies say.</p><h2>The five usual causes</h2><ol><li><strong>There is no INSERT (or UPDATE) policy at all.</strong> A table with only a SELECT policy can be read but never written.</li><li><strong>The request runs as <code>anon</code>, the policy is <code>to authenticated</code>.</strong> Common in server code (Next.js route handlers, server actions, Edge Functions) when the user's session isn't passed to the Supabase client, so the request goes out with only the anon key.</li><li><strong><code>user_id</code> is not sent.</strong> The policy checks <code>auth.uid() = user_id</code>, the insert leaves <code>user_id</code> empty, <code>null = uid</code> is not true, so the row is rejected.</li><li><strong><code>.insert().select()</code> or <code>upsert</code>.</strong> Returning the new row also needs a SELECT policy, and <code>upsert</code> needs INSERT <em>and</em> UPDATE policies (plus SELECT to return the row).</li><li><strong>Storage uploads.</strong> The same error comes from <code>storage.objects</code> when the bucket has no INSERT policy for the uploader; <code>upsert: true</code> needs UPDATE and SELECT too.</li></ol><h2>The fix</h2><p>Give each role exactly the write it needs, and let the database fill in the owner:</p><pre><code>-- fill user_id automatically
+alter table public.notes alter column user_id set default auth.uid();
+
+create policy "insert own rows" on public.notes
+  for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+create policy "read own rows" on public.notes
+  for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+-- only if you use upsert or edit rows
+create policy "update own rows" on public.notes
+  for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);</code></pre><p>For storage, scope uploads to a folder named after the user:</p><pre><code>create policy "upload to own folder" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );</code></pre><h2>How to see which role your request ran as</h2><p>In server code, call <code>supabase.auth.getUser()</code> on the same client right before the insert. If it returns no user, the request is <code>anon</code> and an <code>authenticated</code> policy will never match: fix the session handling (for example the cookie-based server client), not the policy.</p><h2>What not to do</h2><p>Don't turn RLS off, and don't put the <code>service_role</code> key in the browser to make the error go away. Both make every row writable by anyone who opens your app.</p><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase: ERROR 42501 must be owner of table objects (fix)</title>
+<meta name="description" content="Why &#x27;must be owner of table objects&#x27; appears when you enable RLS or add policies on Supabase storage.objects, and the statements that work instead.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-must-be-owner-of-table-objects/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase: ERROR 42501 must be owner of table objects (fix)">
+<meta property="og:description" content="Why &#x27;must be owner of table objects&#x27; appears when you enable RLS or add policies on Supabase storage.objects, and the statements that work instead.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-must-be-owner-of-table-objects/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “must be owner of table objects” – what it means and what to run instead", "description": "Why 'must be owner of table objects' appears when you enable RLS or add policies on Supabase storage.objects, and the statements that work instead.", "url": "https://abhi12337.github.io/checks/guides/supabase-must-be-owner-of-table-objects/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-23"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>Supabase “must be owner of table objects” – what it means and what to run instead</h1>
+<pre class="error-text"><code>ERROR: 42501: must be owner of table objects</code></pre>
+<article class="explainer"><h2>What it means</h2><p><code>storage.objects</code> belongs to an internal Supabase role (<code>supabase_storage_admin</code>), not to the <code>postgres</code> role you use in the SQL Editor and in migrations. Statements that need table ownership, such as <code>ALTER TABLE storage.objects ...</code>, are refused.</p><h2>Why you hit it</h2><p>Most often from an old tutorial or a generated migration that starts with:</p><pre><code>alter table storage.objects enable row level security;</code></pre><p>You don't need that line. Row Level Security is already enabled on <code>storage.objects</code> in Supabase projects. Delete it and keep the policies.</p><h2>What works instead</h2><p>Creating, changing and dropping <em>policies</em> on storage tables is allowed for <code>postgres</code>, even though it doesn't own them. Run the policy on its own:</p><pre><code>create policy "users read own files" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'documents'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );</code></pre><p>Need a hard block, for example no deletes from one bucket whatever other policies say? Use a restrictive policy, which is ANDed with all the others:</p><pre><code>create policy "no deletes in seller-documents" on storage.objects
+  as restrictive
+  for delete to authenticated
+  using (bucket_id &lt;&gt; 'seller-documents');</code></pre><p>The dashboard's policy editor has no option for restrictive policies, so use the SQL Editor or a migration.</p><h2>Check what&#x27;s there</h2><pre><code>select policyname, cmd, permissive, roles, qual, with_check
+from pg_policies
+where schemaname = 'storage' and tablename = 'objects'
+order by cmd, policyname;</code></pre><p>A restrictive policy shows <code>RESTRICTIVE</code> in the <code>permissive</code> column.</p><h2>The same error on auth tables</h2><p>“must be owner of table users” is the same thing for <code>auth.users</code>. Don't alter auth tables; keep your own columns in a <code>public.profiles</code> table keyed by the user id.</p><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

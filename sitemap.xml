@@ -18,4 +18,8 @@
   <url><loc>https://abhi12337.github.io/checks/llm-api-cost-checker/</loc><lastmod>2026-11-23</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/postgres-migration-lock-checker/</loc><lastmod>2026-11-23</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/postgres-missing-foreign-key-index/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-new-row-violates-row-level-security-policy/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-must-be-owner-of-table-objects/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/</loc><lastmod>2026-11-23</lastmod></url>
 </urlset>

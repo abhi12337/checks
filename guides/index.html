@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase, Postgres and AI-app error guides – Local Code Checks</title>
+<meta name="description" content="Plain explanations and exact fixes for errors people hit when shipping apps on Supabase, Postgres and AI builders.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase, Postgres and AI-app error guides – Local Code Checks">
+<meta property="og:description" content="Plain explanations and exact fixes for errors people hit when shipping apps on Supabase, Postgres and AI builders.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/">
+<link rel="icon" href="../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../static/style.css?v=9013d7aa35">
+
+<script src="../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../"><img src="../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../">All checks</a> / Guides</nav>
+<h1>Error guides</h1>
+<p class="lede">The exact error message, what it means, and the fix.</p>
+<ul class="page-list guides"><li><a href="supabase-new-row-violates-row-level-security-policy/">Supabase “new row violates row-level security policy” – causes and fix</a><br><span class="muted">Why Supabase returns &#x27;new row violates row-level security policy for table&#x27; (42501) on insert, update, upsert or storage upload, and the exact policy that fixes each case.</span></li><li><a href="supabase-must-be-owner-of-table-objects/">Supabase “must be owner of table objects” – what it means and what to run instead</a><br><span class="muted">Why &#x27;must be owner of table objects&#x27; appears when you enable RLS or add policies on Supabase storage.objects, and the statements that work instead.</span></li><li><a href="supabase-edge-function-404-not-found-cors-preflight/">Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight</a><br><span class="muted">Browser says CORS failed and the OPTIONS request to your Supabase Edge Function returns 404 NOT_FOUND. Your CORS code never ran: here is how to find the real cause.</span></li></ul>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

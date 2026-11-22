@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase Edge Function 404 NOT_FOUND on CORS preflight (fix)</title>
+<meta name="description" content="Browser says CORS failed and the OPTIONS request to your Supabase Edge Function returns 404 NOT_FOUND. Your CORS code never ran: here is how to find the real cause.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase Edge Function 404 NOT_FOUND on CORS preflight (fix)">
+<meta property="og:description" content="Browser says CORS failed and the OPTIONS request to your Supabase Edge Function returns 404 NOT_FOUND. Your CORS code never ran: here is how to find the real cause.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight", "description": "Browser says CORS failed and the OPTIONS request to your Supabase Edge Function returns 404 NOT_FOUND. Your CORS code never ran: here is how to find the real cause.", "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-23"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight</h1>
+<pre class="error-text"><code>Response to preflight request doesn&#x27;t pass access control check: It does not have HTTP ok status.  (OPTIONS …/functions/v1/my-function → 404, sb-error-code: NOT_FOUND)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>The 404 comes from Supabase's Functions gateway, before your code runs: no function with that name is registered on the project in the URL. Because your function never ran, your CORS headers never got sent, and the browser reports it as a CORS error. Changing CORS code won't fix it.</p><h2>Prove it in one minute</h2><pre><code># your function
+curl -i -X OPTIONS https://&lt;project-ref&gt;.supabase.co/functions/v1/my-function
+
+# a name that surely doesn't exist
+curl -i -X OPTIONS https://&lt;project-ref&gt;.supabase.co/functions/v1/does-not-exist-123</code></pre><p>If both return the same 404, the gateway doesn't know your function at that address.</p><h2>The usual causes</h2><ol><li><strong>Name mismatch.</strong> The function name is the folder name under <code>supabase/functions/</code>. <code>capture-paypal-order</code>, <code>capture_paypal_order</code> and <code>capturePaypalOrder</code> are three different functions.</li><li><strong>Wrong project.</strong> Deployed to staging, but the app's <code>SUPABASE_URL</code> points at production (or the other way round). The project ref in the URL decides where the request goes.</li><li><strong>Renamed or deleted</strong> after the frontend was built, and the app still calls the old name.</li></ol><p>List what is actually deployed on the project your app calls:</p><pre><code>supabase functions list --project-ref &lt;project-ref&gt;</code></pre><p>If a test from the dashboard works but the browser gets 404, compare the exact URL in the browser's network tab with the names in that list.</p><h2>Once the function is found: a CORS handler that works</h2><pre><code>const cors = {
+  'Access-Control-Allow-Origin': 'https://your-app.com',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+Deno.serve(async (req) =&gt; {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  const data = { ok: true };
+  return new Response(JSON.stringify(data), {
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+});</code></pre><p>Add the CORS headers to <em>every</em> response, including errors, or the browser hides the real error behind a CORS message again.</p><p class="related">Check your own project for this: <a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>
