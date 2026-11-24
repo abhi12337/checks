@@ -76,6 +76,10 @@ Hub page: https://abhi12337.github.io/checks/guides/ai-security/
 - [Per-user token quotas for an LLM endpoint – stop unbounded consumption (OWASP LLM10)](https://abhi12337.github.io/checks/guides/llm-api-per-user-quota-unbounded-consumption/): Stop one account from draining your OpenAI or Anthropic budget: a server-side key, daily per-user token quotas in Postgres, output caps and provider limits.
 - [Audit logs for AI agent tool calls – record enough to answer “why did it do that?”](https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/): What to record for every AI agent tool call, how to keep the log append-only in Postgres, what to redact, and the queries that answer 'what did it do?'
 
+## Research (own data)
+
+- [The AI security questions enterprise buyers ask vendors](https://abhi12337.github.io/checks/research/ai-vendor-security-questions/): I read 7 public AI vendor security questionnaires and counted the questions. The 19 that come up, how often, and answer templates for startups.
+
 ## Checkers (run in the browser)
 
 - [Supabase RLS checker](https://abhi12337.github.io/checks/supabase-rls-checker/): Check Supabase migrations for tables without Row Level Security, using (true) policies, public buckets and service_role keys. Runs in your browser, no upload.
