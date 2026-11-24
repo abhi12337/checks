@@ -15,7 +15,7 @@
 <meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/">
 <link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight", "description": "Browser says CORS failed and the OPTIONS request to your Supabase Edge Function returns 404 NOT_FOUND. Your CORS code never ran: here is how to find the real cause.", "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-23"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight", "description": "Browser says CORS failed and the OPTIONS request to your Supabase Edge Function returns 404 NOT_FOUND. Your CORS code never ran: here is how to find the real cause.", "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-24"}</script>
 <script src="../../static/theme.js?v=9013d7aa35"></script>
 </head>
 <body>
@@ -45,7 +45,7 @@ Deno.serve(async (req) =&gt; {
   return new Response(JSON.stringify(data), {
     headers: { ...cors, 'Content-Type': 'application/json' },
   });
-});</code></pre><p>Add the CORS headers to <em>every</em> response, including errors, or the browser hides the real error behind a CORS message again.</p><p class="related">Check your own project for this: <a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a> (runs in your browser, nothing uploaded).</p></article>
+});</code></pre><p>Add the CORS headers to <em>every</em> response, including errors, or the browser hides the real error behind a CORS message again.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-edge-function-cors-header-not-allowed/">Supabase Edge Function CORS errors from the browser – headers, preflight and error responses</a></li><li><a href="../supabase-edge-function-401-invalid-jwt/">Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”</a></li></ul><p class="related">Check your own project for this: <a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a> (runs in your browser, nothing uploaded).</p></article>
 <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
 </main>
 <footer class="site-footer">

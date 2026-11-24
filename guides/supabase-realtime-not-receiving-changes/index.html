@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase Realtime not receiving changes (postgres_changes)</title>
+<meta name="description" content="Your Supabase Realtime channel says SUBSCRIBED but no INSERT/UPDATE/DELETE events arrive. Check the publication, RLS, grants, filters and replica identity.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-realtime-not-receiving-changes/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase Realtime not receiving changes (postgres_changes)">
+<meta property="og:description" content="Your Supabase Realtime channel says SUBSCRIBED but no INSERT/UPDATE/DELETE events arrive. Check the publication, RLS, grants, filters and replica identity.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-realtime-not-receiving-changes/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase Realtime subscribed but no postgres_changes events – the checklist", "description": "Your Supabase Realtime channel says SUBSCRIBED but no INSERT/UPDATE/DELETE events arrive. Check the publication, RLS, grants, filters and replica identity.", "url": "https://abhi12337.github.io/checks/guides/supabase-realtime-not-receiving-changes/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-24"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>Supabase Realtime subscribed but no postgres_changes events – the checklist</h1>
+<pre class="error-text"><code>Channel status: SUBSCRIBED … but the postgres_changes callback never fires</code></pre>
+<article class="explainer"><h2>How postgres_changes decides what you get</h2><p>Realtime reads changes from Postgres logical replication, but only for tables in the <code>supabase_realtime</code> publication. For each change it checks whether <em>this subscriber</em> may see the row, using the subscriber's JWT and your RLS policies, then applies your filter. If any step says no, the event is dropped silently. No error is raised, which is why this is confusing.</p><h2>1. The table is not in the publication</h2><pre><code>select schemaname, tablename
+from pg_publication_tables
+where pubname = 'supabase_realtime';
+
+alter publication supabase_realtime add table public.messages;</code></pre><p>The dashboard toggle “Enable Realtime” on the table does the same thing.</p><h2>2. RLS or grants hide the row from the subscriber</h2><p>With RLS on, the subscriber needs a SELECT policy that matches the row, exactly as if they ran <code>select</code> themselves. Signed-out subscribers run as <code>anon</code>, so a policy <code>to authenticated</code> never matches them. Subscribe after sign-in; if you manage tokens yourself, pass the token with <code>supabase.realtime.setAuth(token)</code>. The role also needs a SELECT grant on the table, which new tables no longer get automatically.</p><pre><code>grant select on table public.messages to authenticated;
+
+create policy "members read room messages" on public.messages
+  for select to authenticated
+  using (room_id in (select private.my_room_ids()));</code></pre><p>Test it simply: if this user can't <code>select</code> the row through the API, Realtime won't send it either.</p><h2>3. The filter doesn&#x27;t match</h2><p>Filters are <code>column=operator.value</code> expressions, such as <code>room_id=eq.42</code> or <code>name=in.(red,blue)</code>, evaluated on the server. Check the operator against the “Available filters” table in Supabase's Postgres Changes docs, since older client and server versions support fewer of them. A typo in the column name or a value of the wrong type gives no events and no error. Event names are upper case: <code>'INSERT'</code>, <code>'UPDATE'</code>, <code>'DELETE'</code> or <code>'*'</code>.</p><h2>4. UPDATE and DELETE look empty</h2><p>By default <code>payload.old</code> holds only the primary key. To get the previous values, and to be able to filter DELETE events, set the replica identity to full:</p><pre><code>alter table public.messages replica identity full;</code></pre><p>Also note: RLS policies are not applied to DELETE events, which is why their payload carries so little.</p><h2>5. You never look at the subscribe status</h2><p>Log the status callback. <code>CHANNEL_ERROR</code> and <code>TIMED_OUT</code> mean the subscription itself failed (often an expired token or a bad filter), which is a different problem from events being filtered out:</p><pre><code>const channel = supabase
+  .channel('room-42')
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'messages', filter: 'room_id=eq.42' },
+    (payload) =&gt; console.log('new message', payload.new),
+  )
+  .subscribe((status, err) =&gt; {
+    console.log('realtime status', status, err); // SUBSCRIBED, CHANNEL_ERROR, TIMED_OUT, CLOSED
+  });
+
+// when the component unmounts
+supabase.removeChannel(channel);</code></pre><h2>How to verify</h2><p>Keep the page open with the console visible, then insert a row from the SQL Editor that the signed-in user is allowed to read:</p><pre><code>insert into public.messages (room_id, body, user_id)
+values (42, 'realtime test', '&lt;the-subscribers-user-uuid&gt;');</code></pre><p>The callback should fire within a second or two. If it fires for a <code>using (true)</code> test policy but not for your real one, the policy is the problem. For high-volume tables, Supabase suggests Broadcast instead, because every change is checked against RLS once per subscriber.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-permission-denied-for-table/">Supabase “permission denied for table” – a missing GRANT, not a missing policy</a></li><li><a href="../supabase-infinite-recursion-detected-in-policy/">Supabase “infinite recursion detected in policy for relation” – cause and fix</a></li><li><a href="../supabase-auth-uid-null-sql-editor/">Supabase auth.uid() returns null – where it works, where it can&#x27;t, and how to test policies</a></li></ul><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

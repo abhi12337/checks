@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase: infinite recursion detected in policy (42P17)</title>
+<meta name="description" content="Why &#x27;infinite recursion detected in policy for relation&#x27; happens when an RLS policy queries its own table, and the security definer function pattern that fixes it safely.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-infinite-recursion-detected-in-policy/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase: infinite recursion detected in policy (42P17)">
+<meta property="og:description" content="Why &#x27;infinite recursion detected in policy for relation&#x27; happens when an RLS policy queries its own table, and the security definer function pattern that fixes it safely.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-infinite-recursion-detected-in-policy/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “infinite recursion detected in policy for relation” – cause and fix", "description": "Why 'infinite recursion detected in policy for relation' happens when an RLS policy queries its own table, and the security definer function pattern that fixes it safely.", "url": "https://abhi12337.github.io/checks/guides/supabase-infinite-recursion-detected-in-policy/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-24"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>Supabase “infinite recursion detected in policy for relation” – cause and fix</h1>
+<pre class="error-text"><code>infinite recursion detected in policy for relation &quot;members&quot;  (code 42P17, HTTP 500)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>To decide whether you may see a row of <code>members</code>, Postgres evaluates the policy. The policy itself selects from <code>members</code>, which needs the policy again, which selects from <code>members</code> again. Postgres detects the loop and aborts the whole query. Through the Supabase API it arrives as HTTP 500.</p><p>The same happens across two tables: a policy on <code>projects</code> reads <code>members</code>, and a policy on <code>members</code> reads <code>projects</code>.</p><h2>The policy that causes it</h2><p>The typical team or organisation membership check:</p><pre><code>create policy "see my team" on public.members
+  for select to authenticated
+  using (
+    team_id in (
+      select team_id from public.members where user_id = auth.uid()
+    )
+  );</code></pre><p>The subquery reads <code>members</code> under RLS, so it triggers this same policy.</p><p>The other classic is an admin check on the table that stores the role:</p><pre><code>create policy "admins see all profiles" on public.profiles
+  for select to authenticated
+  using (
+    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
+  );</code></pre><p>Same loop, same fix: move the lookup into a function such as <code>private.is_admin()</code> built like the one below, and call <code>(select private.is_admin())</code> in the policy.</p><h2>The fix: look up membership in a security definer function</h2><p>A <code>security definer</code> function runs with its owner's rights. Owned by <code>postgres</code> (the table owner), its query is not filtered by RLS, so the loop is gone. Put it in a schema that is <strong>not</strong> exposed through the API, pin its <code>search_path</code>, and let only signed-in users call it:</p><pre><code>create schema if not exists private;
+
+create or replace function private.my_team_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select team_id from public.members where user_id = (select auth.uid());
+$$;
+
+revoke all on function private.my_team_ids() from public, anon;
+grant usage on schema private to authenticated;
+grant execute on function private.my_team_ids() to authenticated;
+
+drop policy "see my team" on public.members;
+
+create policy "see my team" on public.members
+  for select to authenticated
+  using (team_id in (select private.my_team_ids()));</code></pre><p>The function still filters by <code>auth.uid()</code>, so it only ever returns the caller's own teams. Reuse it in the policies of every table that is scoped by team (projects, invoices, files), which removes the cross-table loops too.</p><h2>Why the private schema matters</h2><p>Supabase's RLS guide warns that a security definer function in an exposed schema (such as <code>public</code>) can be called over the Data API with the creator's privileges. A function that only returns the caller's team ids is harmless, but the habit is dangerous: keep these helpers out of <code>public</code>. And with <code>search_path = ''</code>, every table name inside must be schema-qualified (<code>public.members</code>), or the function fails with “relation does not exist”.</p><h2>How to verify</h2><p>Run the query as a real user, inside a transaction that is rolled back:</p><pre><code>begin;
+set local role authenticated;
+select set_config('request.jwt.claims',
+  json_build_object('sub', '&lt;a-real-user-uuid&gt;', 'role', 'authenticated')::text, true);
+select * from public.members limit 5;
+rollback;</code></pre><p>You should get that user's team rows and no 42P17. Also run it with a user who belongs to no team: you should get zero rows, not an error.</p><h2>Performance note</h2><p>Wrapping calls as <code>(select auth.uid())</code> and <code>(select private.my_team_ids())</code> lets Postgres evaluate them once per statement instead of once per row. Add an index on <code>members (user_id)</code> so the lookup stays fast as the table grows.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../postgres-security-definer-search-path/">SECURITY DEFINER functions without a fixed search_path – the risk and the fix</a></li><li><a href="../supabase-auth-uid-null-sql-editor/">Supabase auth.uid() returns null – where it works, where it can&#x27;t, and how to test policies</a></li><li><a href="../supabase-new-row-violates-row-level-security-policy/">Supabase “new row violates row-level security policy” – causes and fix</a></li></ul><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase: Function Search Path Mutable / SECURITY DEFINER</title>
+<meta name="description" content="What Supabase&#x27;s &#x27;Function Search Path Mutable&#x27; and &#x27;Public Can Execute SECURITY DEFINER Function&#x27; warnings mean, the real risk, and the SQL that fixes both.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/postgres-security-definer-search-path/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase: Function Search Path Mutable / SECURITY DEFINER">
+<meta property="og:description" content="What Supabase&#x27;s &#x27;Function Search Path Mutable&#x27; and &#x27;Public Can Execute SECURITY DEFINER Function&#x27; warnings mean, the real risk, and the SQL that fixes both.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/postgres-security-definer-search-path/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "SECURITY DEFINER functions without a fixed search_path – the risk and the fix", "description": "What Supabase's 'Function Search Path Mutable' and 'Public Can Execute SECURITY DEFINER Function' warnings mean, the real risk, and the SQL that fixes both.", "url": "https://abhi12337.github.io/checks/guides/postgres-security-definer-search-path/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-24"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>SECURITY DEFINER functions without a fixed search_path – the risk and the fix</h1>
+<pre class="error-text"><code>Function `public.handle_new_user` has a role mutable search_path
+(Security Advisor: 0011 Function Search Path Mutable)</code></pre>
+<article class="explainer"><h2>What the warning says</h2><p>Supabase's Security Advisor flags every function whose <code>search_path</code> is not set in its definition. Without it, the function resolves unqualified names like <code>profiles</code> or <code>lower()</code> using the search path of whoever calls it. For a normal function that is a reliability problem. For a <code>security definer</code> function, which runs with its owner's rights (usually <code>postgres</code>, which bypasses RLS on its own tables), it is a security problem.</p><h2>The risk, concretely</h2><p>The PostgreSQL manual (“Writing SECURITY DEFINER Functions Safely”) explains it: if the search path includes a schema an untrusted user can write to, that user can create a table, function or operator with the same name as one the function uses, and the privileged function will use theirs. The temporary schema is searched first by default and is writable by anyone who can create temp tables.</p><p>On Supabase, API users can't create objects directly, so the more common real-world problem is the second advisor warning:</p><pre><code>Function `public.delete_user_data(uuid)` can be executed by the `anon` role as a
+`SECURITY DEFINER` function via `/rest/v1/rpc/delete_user_data`.</code></pre><p>New functions are executable by everyone unless you say otherwise: Postgres grants EXECUTE to <code>PUBLIC</code> by default, and Supabase projects have also granted it to <code>anon</code> and <code>authenticated</code> directly. A security definer function in an exposed schema is an RLS bypass that anyone with your publishable key can call over HTTP, with whatever arguments they like.</p><h2>Fix 1: pin the search path and qualify names</h2><pre><code>create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email);
+  return new;
+end;
+$$;</code></pre><p>With an empty search path nothing is looked up implicitly, so every table and non-built-in function must carry its schema (<code>public.profiles</code>, <code>extensions.gen_random_bytes()</code>). For an existing function you can also run <code>alter function public.handle_new_user() set search_path = '';</code>, then test it, because unqualified names inside will now fail with “relation does not exist”.</p><h2>Fix 2: decide who may call it</h2><p>Revoking from <code>public</code> alone is often not enough on Supabase, because <code>anon</code> and <code>authenticated</code> can hold direct grants. Revoke from all three, then grant back only what is needed:</p><pre><code>revoke execute on function public.delete_user_data(uuid) from public, anon, authenticated;
+grant execute on function public.delete_user_data(uuid) to service_role;</code></pre><p>Trigger functions such as <code>handle_new_user</code> don't need EXECUTE for API roles at all; the trigger fires them. Helper functions used only inside RLS policies belong in a non-exposed schema (<code>private</code>), so they can't be called over HTTP.</p><h2>Fix 3: ask whether it needs to be definer at all</h2><p>If the function only reads or writes rows the caller is allowed to touch anyway, make it <code>security invoker</code> (the default). It then runs under the caller's RLS, and the bypass question disappears. Keep <code>security definer</code> for the few cases that truly need to cross RLS, and inside them check <code>auth.uid()</code> or the caller's role yourself before doing anything.</p><h2>How to verify</h2><pre><code>select p.oid::regprocedure as function,
+       p.prosecdef as security_definer,
+       p.proconfig as settings,
+       has_function_privilege('anon', p.oid, 'execute') as anon_can_execute
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+order by security_definer desc;</code></pre><p>Every <code>security_definer = true</code> row should show <code>search_path=</code> in <code>settings</code>, and <code>anon_can_execute</code> should be false unless signed-out visitors are really meant to call it. Rerun the Security Advisor: both warnings are gone.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-infinite-recursion-detected-in-policy/">Supabase “infinite recursion detected in policy for relation” – cause and fix</a></li><li><a href="../postgres-relation-does-not-exist/">“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache</a></li><li><a href="../supabase-rpc-could-not-find-function-schema-cache/">Supabase rpc “Could not find the function … in the schema cache” and “function does not exist”</a></li></ul><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

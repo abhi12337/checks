@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Postgres / Supabase: relation does not exist (42P01)</title>
+<meta name="description" content="Why Postgres says &#x27;relation does not exist&#x27; (42P01) or Supabase says &#x27;Could not find the table in the schema cache&#x27; (PGRST205) for a table you can see, and the fix for each cause.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/postgres-relation-does-not-exist/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Postgres / Supabase: relation does not exist (42P01)">
+<meta property="og:description" content="Why Postgres says &#x27;relation does not exist&#x27; (42P01) or Supabase says &#x27;Could not find the table in the schema cache&#x27; (PGRST205) for a table you can see, and the fix for each cause.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/postgres-relation-does-not-exist/">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=9013d7aa35">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache", "description": "Why Postgres says 'relation does not exist' (42P01) or Supabase says 'Could not find the table in the schema cache' (PGRST205) for a table you can see, and the fix for each cause.", "url": "https://abhi12337.github.io/checks/guides/postgres-relation-does-not-exist/", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "dateModified": "2026-11-24"}</script>
+<script src="../../static/theme.js?v=9013d7aa35"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../../guides/">Guides</a></nav>
+<h1>“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache</h1>
+<pre class="error-text"><code>ERROR: 42P01: relation &quot;profiles&quot; does not exist
+API: {&quot;code&quot;:&quot;PGRST205&quot;,&quot;message&quot;:&quot;Could not find the table &#x27;public.profiles&#x27; in the schema cache&quot;}</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Postgres resolved the name you wrote and found no table or view by that name in the schemas it searched. The table may well exist: just not under that exact name, not in a schema on the <code>search_path</code>, or not in this database. Through the Supabase API the same situation shows up as <code>PGRST205</code>, HTTP 404.</p><h2>Step 1: find where the table really is</h2><pre><code>select table_schema, table_name
+from information_schema.tables
+where table_name ilike '%profile%';
+
+show search_path;
+
+select to_regclass('public.profiles');   -- null means: no such table</code></pre><p>Run this in the SQL Editor of the <em>same project</em> your app talks to. The answer points to one of the causes below.</p><h2>The usual causes</h2><ol><li><strong>Different schema.</strong> The table is <code>app.profiles</code>, but the query says <code>profiles</code> and the search path is <code>"$user", public, extensions</code>. Qualify the name (<code>app.profiles</code>). From supabase-js, use <code>supabase.schema('app').from('profiles')</code> and add <code>app</code> to <em>Exposed schemas</em> in the API settings.</li><li><strong>Upper-case letters in quotes.</strong> A table created as <code>"Profiles"</code> (common with GUI tools and some ORMs) must always be written with quotes and the same case. Unquoted <code>Profiles</code> is folded to <code>profiles</code>, which doesn't exist. Renaming it to lower case saves you from this forever: <code>alter table "Profiles" rename to profiles;</code></li><li><strong>A function with an empty search_path.</strong> Functions defined with <code>set search_path = ''</code> (the recommended secure setting) see no schemas at all, so every name inside must be qualified: <code>public.profiles</code>, not <code>profiles</code>.</li><li><strong>The migration ran somewhere else.</strong> It ran locally or on staging, not on the project in your app's URL. Compare with <code>supabase migration list</code>, then <code>supabase db push</code> to the right project.</li><li><strong>A stale API schema cache</strong> (PGRST205 only). The table exists, but the API hasn't reloaded its view of the schema yet.</li><li><strong>Migration order.</strong> Migrations run in file-name (timestamp) order. A policy, view or foreign key in <code>20260101_policies.sql</code> that refers to a table created in <code>20260105_tables.sql</code> works on a database where you ran things by hand, then fails on <code>supabase db reset</code> or a fresh branch. Rename the file so the table is created first.</li></ol><h2>Fixes</h2><pre><code>-- 1. qualify the name
+select * from app.profiles;
+
+-- 3. qualify names inside functions that pin search_path
+create or replace function public.profile_count()
+returns bigint
+language sql
+stable
+set search_path = ''
+as $$
+  select count(*) from public.profiles;
+$$;
+
+-- 5. ask the API to reload its schema cache
+notify pgrst, 'reload schema';</code></pre><h2>Not this error</h2><ul><li><code>permission denied for table profiles</code> means the table was found but the role has no GRANT on it.</li><li>An empty result means the table was found and RLS filtered the rows.</li><li><code>column "x" does not exist</code> (42703) means the table is right and a column name is wrong, often the same quoting problem.</li></ul><h2>How to verify</h2><p><code>select to_regclass('public.profiles');</code> returns the name rather than null, the query runs in the SQL Editor, and the same call from your app returns rows or an empty list instead of PGRST205. If the SQL Editor works but the app doesn't, compare the project URL in your app's environment with the project you are looking at.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-permission-denied-for-table/">Supabase “permission denied for table” – a missing GRANT, not a missing policy</a></li><li><a href="../supabase-rpc-could-not-find-function-schema-cache/">Supabase rpc “Could not find the function … in the schema cache” and “function does not exist”</a></li><li><a href="../postgres-security-definer-search-path/">SECURITY DEFINER functions without a fixed search_path – the risk and the fix</a></li></ul><p class="related">Check your own project for this: <a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <p><a href="../../guides/">Error guides: Supabase, Postgres and AI-app errors explained</a></p>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>
