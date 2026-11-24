@@ -125,3 +125,11 @@ table.rules th, table.rules td { text-align: left; padding: 7px 8px; border-bott
 .local-note { margin: 0 0 12px; }
 .page-list { columns: 2 240px; padding-left: 1.1em; margin: 0; font-size: .9rem; }
 .repos { font-size: .88rem; overflow-wrap: anywhere; }
+.guide-list { list-style: none; padding: 0; margin: 0; }
+.guide-list li { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.guide-list li a { font-weight: 600; }
+.guide-list .muted { display: block; font-size: .92rem; margin-top: 2px; }
+.byline { font-size: .88rem; color: var(--muted); margin: -4px 0 14px; }
+.hub-links { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; font-size: .9rem; }
+.hub-links a { display: inline-block; border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px; text-decoration: none; }
+.hub-links a:hover { border-color: var(--accent); }

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase Storage: Object not found (404) on signed URL</title>
+<meta name="description" content="Why Supabase Storage returns &#x27;Object not found&#x27; (404) from createSignedUrl or download when the file exists: wrong path, missing SELECT policy, anon client.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-storage-object-not-found/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase Storage: Object not found (404) on signed URL">
+<meta property="og:description" content="Why Supabase Storage returns &#x27;Object not found&#x27; (404) from createSignedUrl or download when the file exists: wrong path, missing SELECT policy, anon client.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-storage-object-not-found/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Supabase Storage: Object not found (404) on signed URL">
+<meta name="twitter:description" content="Why Supabase Storage returns &#x27;Object not found&#x27; (404) from createSignedUrl or download when the file exists: wrong path, missing SELECT policy, anon client.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase Storage “Object not found” (404) – when the file is really there", "description": "Why Supabase Storage returns 'Object not found' (404) from createSignedUrl or download when the file exists: wrong path, missing SELECT policy, anon client.", "url": "https://abhi12337.github.io/checks/guides/supabase-storage-object-not-found/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-storage-object-not-found/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Supabase RLS and Storage", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Supabase RLS and Storage", "item": "https://abhi12337.github.io/checks/guides/supabase-rls/"}, {"@type": "ListItem", "position": 4, "name": "Supabase Storage “Object not found” (404) – when the file is really there", "item": "https://abhi12337.github.io/checks/guides/supabase-storage-object-not-found/"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why does Supabase Storage return 404 instead of 403 for a permissions problem?", "acceptedAnswer": {"@type": "Answer", "text": "Storage looks the object up through RLS. If no policy lets your role see the row, the lookup finds nothing, so you get 'Object not found'. Check the SELECT policy on storage.objects before assuming the file is missing."}}, {"@type": "Question", "name": "Does createSignedUrl need an INSERT policy?", "acceptedAnswer": {"@type": "Answer", "text": "No. Creating a signed URL or downloading needs SELECT on the object. Uploading needs INSERT, and upload with upsert: true also needs SELECT and UPDATE."}}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../supabase-rls/">Supabase RLS and Storage</a></nav>
+<h1>Supabase Storage “Object not found” (404) – when the file is really there</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>StorageApiError: Object not found   (HTTP 404, from createSignedUrl(), download() or a signed URL)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Supabase Storage keeps one row per file in <code>storage.objects</code>, protected by Row Level
+Security. When you ask for a signed URL or download a file, Storage looks up that row <em>as the role your
+request runs as</em>. If no row matches the bucket and path, or a row exists but no SELECT policy lets this
+role see it, the answer is the same: <code>404</code> with the message <code>Object not found</code>.
+Supabase's own error reference says the legacy <code>not_found</code> error means the resource
+“is not found or you don't have the correct permission to access it”. So a 404 here is often a permissions
+problem in disguise.</p><h2>The usual causes, in the order to check them</h2><ol>
+<li><strong>The path includes the bucket name.</strong> Paths are relative to the bucket. With
+<code>.from('avatars')</code> the path is <code>user-id/photo.png</code>, not
+<code>avatars/user-id/photo.png</code>. A leading slash, different letter case or a URL-encoded space
+(<code>%20</code> vs a real space) also makes a different key.</li>
+<li><strong>No SELECT policy on <code>storage.objects</code> for this role.</strong> You can upload with an
+INSERT policy and still be unable to read the file back. <code>createSignedUrl()</code> and
+<code>download()</code> need SELECT.</li>
+<li><strong>The request runs as <code>anon</code>.</strong> In a route handler, server action or Edge
+Function, a Supabase client created without the user's session sends only the anon key, so a policy
+written <code>to authenticated</code> never matches.</li>
+<li><strong>The upload never happened.</strong> <code>upload()</code> returns <code>{ error }</code> instead
+of throwing. If nobody checks it, the file you think exists does not.</li>
+<li><strong>Wrong project or bucket.</strong> Staging keys in production, or a file in <code>avatars</code>
+while the code reads <code>avatar</code>.</li>
+</ol><h2>Step 1: confirm the exact key in SQL</h2><p>In the SQL Editor (which runs as <code>postgres</code> and is not limited by RLS), look at what is really stored:</p><pre><code>select bucket_id, name, owner_id, created_at
+from storage.objects
+where bucket_id = 'documents'
+  and name ilike '%invoice%'
+order by created_at desc
+limit 20;</code></pre><p>The <code>name</code> column is the exact path to pass to <code>createSignedUrl()</code>. If the row is missing, fix the upload. If the row is there, the problem is the path string or the policy.</p><h2>Step 2: add a SELECT policy that matches your folder layout</h2><p>The common layout is one folder per user, named after their id. Read access then looks like this:</p><pre><code>create policy "read own files"
+on storage.objects for select
+to authenticated
+using (
+  bucket_id = 'documents'
+  and (storage.foldername(name))[1] = (select auth.uid())::text
+);</code></pre><p><code>storage.foldername(name)</code> splits the path into folders, so element 1 is the top-level folder. Upload with the same layout so the two always agree:</p><pre><code>const { data: { user } } = await supabase.auth.getUser();
+const path = `${user.id}/${file.name}`;            // no bucket name, no leading slash
+
+const { error: upErr } = await supabase.storage.from('documents').upload(path, file);
+if (upErr) throw upErr;
+
+const { data, error } = await supabase.storage
+  .from('documents')
+  .createSignedUrl(path, 60 * 60);                 // valid for one hour
+if (error) throw error;
+console.log(data.signedUrl);</code></pre><h2>Step 3: make sure the server client carries the user</h2><p>On the server, create the client from the request cookies (the <code>@supabase/ssr</code> server client) or pass the user's access token in the <code>Authorization</code> header. A quick test: call <code>supabase.auth.getUser()</code> on the same client right before <code>createSignedUrl()</code>. No user means the request is <code>anon</code>.</p><p>If a trusted backend job must sign URLs for any file, use a server-only client with the secret (service role) key, and check yourself that the caller may see that file. Never ship that key to the browser.</p><h2>Two look-alikes</h2><ul><li><code>getPublicUrl()</code> never contacts the server: it only builds a string. For a private bucket that URL will not work; use a signed URL instead.</li><li>A signed URL that worked earlier and now fails has usually expired. That is a token error, not a missing object: create a fresh URL, or choose a longer <code>expiresIn</code>.</li></ul><h2>How to verify</h2><p>Signed in as the owner, <code>createSignedUrl()</code> returns a URL that opens the file. Signed in as a second user, the same call returns <code>Object not found</code>. That second result is correct: it means other people cannot read the file.</p><section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">FAQ</h2><details><summary>Why does Supabase Storage return 404 instead of 403 for a permissions problem?</summary><p>Storage looks the object up through RLS. If no policy lets your role see the row, the lookup finds nothing, so you get &#x27;Object not found&#x27;. Check the SELECT policy on storage.objects before assuming the file is missing.</p></details><details><summary>Does createSignedUrl need an INSERT policy?</summary><p>No. Creating a signed URL or downloading needs SELECT on the object. Uploading needs INSERT, and upload with upsert: true also needs SELECT and UPDATE.</p></details></section><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-new-row-violates-row-level-security-policy/">Supabase “new row violates row-level security policy” – causes and fix</a></li><li><a href="../supabase-must-be-owner-of-table-objects/">Supabase “must be owner of table objects” – what it means and what to run instead</a></li><li><a href="../supabase-auth-uid-null-sql-editor/">Supabase auth.uid() returns null – where it works, where it can&#x27;t, and how to test policies</a></li><li><a href="../supabase-permission-denied-for-table/">Supabase “permission denied for table” – a missing GRANT, not a missing policy</a></li></ul><p>More in <a href="../supabase-rls/">Supabase RLS and Storage</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

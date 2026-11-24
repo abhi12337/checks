@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase: Database error deleting user (foreign key)</title>
+<meta name="description" content="Fix &#x27;Database error deleting user&#x27; and &#x27;violates foreign key constraint on table profiles&#x27; (23503) when deleting a Supabase auth user: ON DELETE rules.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-delete-user-violates-foreign-key-constraint/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase: Database error deleting user (foreign key)">
+<meta property="og:description" content="Fix &#x27;Database error deleting user&#x27; and &#x27;violates foreign key constraint on table profiles&#x27; (23503) when deleting a Supabase auth user: ON DELETE rules.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-delete-user-violates-foreign-key-constraint/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Supabase: Database error deleting user (foreign key)">
+<meta name="twitter:description" content="Fix &#x27;Database error deleting user&#x27; and &#x27;violates foreign key constraint on table profiles&#x27; (23503) when deleting a Supabase auth user: ON DELETE rules.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “Database error deleting user” – the foreign key on auth.users", "description": "Fix 'Database error deleting user' and 'violates foreign key constraint on table profiles' (23503) when deleting a Supabase auth user: ON DELETE rules.", "url": "https://abhi12337.github.io/checks/guides/supabase-delete-user-violates-foreign-key-constraint/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-delete-user-violates-foreign-key-constraint/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Auth, JWT and secrets", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Auth, JWT and secrets", "item": "https://abhi12337.github.io/checks/guides/auth-jwt/"}, {"@type": "ListItem", "position": 4, "name": "Supabase “Database error deleting user” – the foreign key on auth.users", "item": "https://abhi12337.github.io/checks/guides/supabase-delete-user-violates-foreign-key-constraint/"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is ON DELETE CASCADE safe for auth.users?", "acceptedAnswer": {"@type": "Answer", "text": "For data that only makes sense with the user, yes, and it is what Supabase's docs use for profiles. For business records you must keep, use ON DELETE SET NULL instead so a user delete never removes orders or invoices."}}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../auth-jwt/">Auth, JWT and secrets</a></nav>
+<h1>Supabase “Database error deleting user” – the foreign key on auth.users</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>Failed to delete user: Database error deleting user
+ERROR: update or delete on table &quot;users&quot; violates foreign key constraint &quot;profiles_id_fkey&quot; on table &quot;profiles&quot; (SQLSTATE 23503)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Another table has a foreign key that points at <code>auth.users</code>, and at least one row in it
+still references the user you are deleting. A foreign key created with a plain
+<code>references auth.users</code> uses the default rule, <code>NO ACTION</code>, which means “refuse the
+delete while children exist”. Supabase Auth runs the delete, Postgres refuses it with SQLSTATE
+<code>23503</code>, and the dashboard or <code>auth.admin.deleteUser()</code> shows the generic
+<code>Database error deleting user</code>. The detailed line is in the Postgres logs.</p><h2>Step 1: list every foreign key that points at auth.users</h2><pre><code>select conrelid::regclass as child_table,
+       conname            as constraint_name,
+       pg_get_constraintdef(oid) as definition
+from pg_constraint
+where contype = 'f'
+  and confrelid = 'auth.users'::regclass;</code></pre><p>A definition without <code>ON DELETE</code> is the one that blocks the delete. Repeat the query with <code>'public.profiles'::regclass</code> as well: if <code>posts</code> references <code>profiles</code> without a rule, deleting the user cascades into <code>profiles</code> and then fails one level further down.</p><h2>Step 2: decide what should happen to the child rows</h2><ul>
+<li><strong>Data that belongs only to the user</strong> (profile, settings, drafts):
+<code>ON DELETE CASCADE</code>. Supabase's own user-management guide defines <code>profiles.id</code> this way.</li>
+<li><strong>Records you must keep</strong> (orders, invoices, audit entries): <code>ON DELETE SET NULL</code>,
+with a nullable column. The record survives without the person.</li>
+<li><strong>Things that must block deletion</strong> until someone acts: keep <code>NO ACTION</code> or
+<code>RESTRICT</code>, and delete or reassign those rows first in your own code.</li>
+</ul><h2>Step 3: change the constraint</h2><p>Drop and re-add it in one statement, keeping the same name:</p><pre><code>alter table public.profiles
+  drop constraint profiles_id_fkey,
+  add constraint profiles_id_fkey
+    foreign key (id) references auth.users (id) on delete cascade;
+
+-- keep the order, forget the person
+alter table public.orders
+  drop constraint orders_user_id_fkey,
+  add constraint orders_user_id_fkey
+    foreign key (user_id) references auth.users (id) on delete set null;</code></pre><p>On a large child table, adding a foreign key scans it under a lock. Add it with <code>NOT VALID</code> and run <code>alter table … validate constraint …</code> afterwards to keep the lock short. Index the foreign key column too: every delete in <code>auth.users</code> has to find the matching child rows, and without an index that is a full scan.</p><h2>Other things that block a user delete</h2><ul>
+<li><strong>Storage files.</strong> Supabase's docs say you cannot delete a user who still owns objects in
+Storage. Remove the user's files with the Storage API (<code>supabase.storage.from(bucket).remove([...])</code>)
+or reassign them first. Deleting rows from <code>storage.objects</code> with SQL does not delete the files.</li>
+<li><strong>Triggers on auth.users.</strong> A custom <code>after delete</code> trigger that errors
+produces the same generic message. The Postgres log names the function.</li>
+</ul><h2>How to verify</h2><p>Test on a throwaway user inside a transaction in the SQL Editor:</p><pre><code>begin;
+delete from auth.users where id = '00000000-0000-0000-0000-000000000000';  -- a test user's id
+select count(*) from public.profiles where id = '00000000-0000-0000-0000-000000000000';  -- expect 0
+rollback;</code></pre><p>No error, and the child rows are gone (or set to null) inside the transaction. Then delete the test user from the dashboard: the toast should say the user was deleted.</p><section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">FAQ</h2><details><summary>Is ON DELETE CASCADE safe for auth.users?</summary><p>For data that only makes sense with the user, yes, and it is what Supabase&#x27;s docs use for profiles. For business records you must keep, use ON DELETE SET NULL instead so a user delete never removes orders or invoices.</p></details></section><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-database-error-saving-new-user/">Supabase “Database error saving new user” – find the failing trigger and fix it</a></li><li><a href="../postgres-relation-does-not-exist/">“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache</a></li><li><a href="../postgres-new-row-violates-check-constraint/">Postgres “new row for relation … violates check constraint” – find the rule and fix it</a></li><li><a href="../supabase-jwt-expired/">Supabase “JWT expired” – why the token went stale and how to keep it fresh</a></li></ul><p>More in <a href="../auth-jwt/">Auth, JWT and secrets</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

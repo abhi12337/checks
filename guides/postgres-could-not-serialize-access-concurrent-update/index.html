@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Postgres: could not serialize access (40001) – fix</title>
+<meta name="description" content="Why Postgres says &#x27;could not serialize access due to concurrent update&#x27; (40001) under REPEATABLE READ or SERIALIZABLE, and how to retry or avoid it safely.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/postgres-could-not-serialize-access-concurrent-update/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Postgres: could not serialize access (40001) – fix">
+<meta property="og:description" content="Why Postgres says &#x27;could not serialize access due to concurrent update&#x27; (40001) under REPEATABLE READ or SERIALIZABLE, and how to retry or avoid it safely.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/postgres-could-not-serialize-access-concurrent-update/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Postgres: could not serialize access (40001) – fix">
+<meta name="twitter:description" content="Why Postgres says &#x27;could not serialize access due to concurrent update&#x27; (40001) under REPEATABLE READ or SERIALIZABLE, and how to retry or avoid it safely.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Postgres “could not serialize access due to concurrent update” (40001) – retry or redesign", "description": "Why Postgres says 'could not serialize access due to concurrent update' (40001) under REPEATABLE READ or SERIALIZABLE, and how to retry or avoid it safely.", "url": "https://abhi12337.github.io/checks/guides/postgres-could-not-serialize-access-concurrent-update/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/postgres-could-not-serialize-access-concurrent-update/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Postgres errors and performance", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Postgres errors and performance", "item": "https://abhi12337.github.io/checks/guides/postgres-errors/"}, {"@type": "ListItem", "position": 4, "name": "Postgres “could not serialize access due to concurrent update” (40001) – retry or redesign", "item": "https://abhi12337.github.io/checks/guides/postgres-could-not-serialize-access-concurrent-update/"}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../postgres-errors/">Postgres errors and performance</a></nav>
+<h1>Postgres “could not serialize access due to concurrent update” (40001) – retry or redesign</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>ERROR:  could not serialize access due to concurrent update   (SQLSTATE 40001)
+ERROR:  could not serialize access due to read/write dependencies among transactions
+HINT:  The transaction might succeed if retried.</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Your transaction runs at <code>REPEATABLE READ</code> or <code>SERIALIZABLE</code> isolation. At those
+levels every statement sees the database as it was when the transaction took its snapshot. If you then try to
+update, delete or lock (<code>FOR UPDATE</code>) a row that another transaction changed and committed after
+that snapshot, Postgres can't apply your change without breaking the promise, so it aborts your transaction
+with SQLSTATE <code>40001</code>.</p>
+<p>The second message is specific to <code>SERIALIZABLE</code>: Postgres found a pattern of reads and writes
+between concurrent transactions that could not have happened in any one-at-a-time order, so it cancelled one
+of them.</p>
+<p>This is not a bug. The PostgreSQL documentation says applications using these levels must be prepared to
+retry transactions that fail with serialization errors.</p><h2>Where the higher isolation level comes from</h2><ul>
+<li>Explicit code: <code>begin isolation level serializable</code>, or an ORM option such as Prisma's
+<code>$transaction(fn, { isolationLevel: 'Serializable' })</code>. Prisma reports the failure as
+<code>P2034</code>, “Transaction failed due to a write conflict or a deadlock. Please retry your transaction”.</li>
+<li>A database or role default: <code>show default_transaction_isolation;</code></li>
+<li>Supabase's API (PostgREST) and <code>supabase.rpc()</code> run at the default
+<code>READ COMMITTED</code>, where this error does not occur from row updates. If you see it there, check the
+role default above.</li>
+</ul><h2>Fix 1: retry the whole transaction</h2><p>If you need the stronger guarantee, keep it and add a retry around the complete unit of work. Re-run everything, including the reads, because the decision you made from them may change:</p><pre><code>import { Prisma } from '@prisma/client';
+
+async function serializable&lt;T&gt;(fn: (tx: Prisma.TransactionClient) =&gt; Promise&lt;T&gt;, attempts = 5): Promise&lt;T&gt; {
+  for (let i = 1; ; i++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (e) {
+      const retryable = e instanceof Prisma.PrismaClientKnownRequestError &amp;&amp; e.code === 'P2034';
+      if (!retryable || i &gt;= attempts) throw e;
+      await new Promise((r) =&gt; setTimeout(r, 20 * 2 ** i + Math.random() * 20));
+    }
+  }
+}</code></pre><p>With node-postgres or supabase-js, check for <code>code === '40001'</code> instead. Don't send emails or call external APIs inside the transaction; a retry would repeat them.</p><h2>Fix 2: drop to READ COMMITTED and make the write atomic</h2><p>Many “read, check, write” flows don't need serializable isolation at all. Put the check in the <code>UPDATE</code> itself, so the row is re-checked under its lock:</p><pre><code>-- take 1 seat only if one is left; returns no row when sold out
+update public.events
+set seats_left = seats_left - 1
+where id = $1 and seats_left &gt; 0
+returning seats_left;</code></pre><p>Or lock the row first with <code>select … for update</code> at <code>READ COMMITTED</code>: concurrent transactions wait for each other instead of failing.</p><pre><code>begin;
+select balance from public.wallets where user_id = $1 for update;
+-- decide in code using the locked, current balance
+update public.wallets set balance = balance - $2 where user_id = $1;
+commit;</code></pre><h2>Fix 3: reduce conflicts</h2><p>Keep serializable transactions short and touching as few rows as possible. Under <code>SERIALIZABLE</code>, reads that use an index conflict with fewer rows than sequential scans, so the right indexes also reduce false conflicts.</p><h2>How to verify</h2><p>Run a load test with concurrent requests on the same row (for example 50 parallel seat bookings). With retries: no 40001 reaches the user and the final count is exact. With the atomic update: no errors at all, and <code>seats_left</code> never goes below zero.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../postgres-deadlock-detected/">Postgres “deadlock detected” (40P01) – read it, then remove the lock-order problem</a></li><li><a href="../supabase-upsert-duplicate-key-violates-unique-constraint/">Supabase “duplicate key value violates unique constraint” on upsert – the five causes</a></li><li><a href="../supabase-canceling-statement-due-to-statement-timeout/">Supabase “canceling statement due to statement timeout” (57014) – fix the query, then the limit</a></li><li><a href="../postgres-new-row-violates-check-constraint/">Postgres “new row for relation … violates check constraint” – find the rule and fix it</a></li></ul><p>More in <a href="../postgres-errors/">Postgres errors and performance</a> · <a href="../">all guides</a></p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

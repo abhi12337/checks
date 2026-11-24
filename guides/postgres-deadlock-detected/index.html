@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Postgres: ERROR deadlock detected (40P01) – fix</title>
+<meta name="description" content="What Postgres &#x27;deadlock detected&#x27; (40P01) means, how to read the DETAIL lines, and the fixes that stop it: one lock order, shorter transactions, retries.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/postgres-deadlock-detected/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Postgres: ERROR deadlock detected (40P01) – fix">
+<meta property="og:description" content="What Postgres &#x27;deadlock detected&#x27; (40P01) means, how to read the DETAIL lines, and the fixes that stop it: one lock order, shorter transactions, retries.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/postgres-deadlock-detected/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Postgres: ERROR deadlock detected (40P01) – fix">
+<meta name="twitter:description" content="What Postgres &#x27;deadlock detected&#x27; (40P01) means, how to read the DETAIL lines, and the fixes that stop it: one lock order, shorter transactions, retries.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Postgres “deadlock detected” (40P01) – read it, then remove the lock-order problem", "description": "What Postgres 'deadlock detected' (40P01) means, how to read the DETAIL lines, and the fixes that stop it: one lock order, shorter transactions, retries.", "url": "https://abhi12337.github.io/checks/guides/postgres-deadlock-detected/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/postgres-deadlock-detected/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Postgres errors and performance", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Postgres errors and performance", "item": "https://abhi12337.github.io/checks/guides/postgres-errors/"}, {"@type": "ListItem", "position": 4, "name": "Postgres “deadlock detected” (40P01) – read it, then remove the lock-order problem", "item": "https://abhi12337.github.io/checks/guides/postgres-deadlock-detected/"}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../postgres-errors/">Postgres errors and performance</a></nav>
+<h1>Postgres “deadlock detected” (40P01) – read it, then remove the lock-order problem</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>ERROR:  deadlock detected
+DETAIL:  Process 4120 waits for ShareLock on transaction 9123; blocked by process 4188.
+Process 4188 waits for ShareLock on transaction 9122; blocked by process 4120.
+HINT:  See server log for query details.   (SQLSTATE 40P01)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Two transactions each hold a lock the other one needs. Neither can continue, so after
+<code>deadlock_timeout</code> (1 second by default) Postgres checks the wait graph, finds the cycle, and cancels
+one of them with <code>40P01</code>. The other one then finishes normally. Nothing is corrupted: the cancelled
+transaction is rolled back completely. But your user sees an error, and under load it keeps happening.</p>
+<p>“ShareLock on transaction N” means “waiting for transaction N to finish”, which almost always means waiting
+for a row that transaction N has updated or locked.</p><h2>The usual cause: the same rows, locked in a different order</h2><p>Transaction A updates account 1 then account 2. At the same moment transaction B updates account 2
+then account 1. A holds 1 and waits for 2; B holds 2 and waits for 1. Common real versions:</p>
+<ul>
+<li>Transfers or counters that touch two rows, picked in request order (“from” then “to”).</li>
+<li>Batch updates or upserts where each request sends rows in a different order.</li>
+<li>A trigger that updates a parent row (a counter, <code>updated_at</code>) while another code path locks
+the parent first and then the children.</li>
+<li>Long transactions that do slow work (an HTTP call, a big loop) between two updates.</li>
+</ul><h2>Step 1: find the two statements</h2><p>The client only gets the summary. The server log has a line per process with the query it was running. On Supabase, open the Postgres logs in the dashboard and search for <code>deadlock detected</code>; the entry includes both statements. Pair them with the code paths that issue them.</p><h2>Step 2: lock rows in one fixed order</h2><p>Before changing several rows, lock them all in a single statement sorted by primary key. Every transaction then queues in the same order and cannot form a cycle:</p><pre><code>create or replace function public.transfer(from_id bigint, to_id bigint, amount numeric)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  -- lock both rows, lowest id first, before touching either
+  perform 1 from public.accounts
+  where id in (from_id, to_id)
+  order by id
+  for update;
+
+  update public.accounts set balance = balance - amount where id = from_id;
+  update public.accounts set balance = balance + amount where id = to_id;
+end;
+$$;</code></pre><p>For batch writes, sort the rows by their key in your code before sending them, so every request inserts or updates in the same order.</p><h2>Step 3: keep transactions short</h2><p>Do API calls, file uploads and model calls before <code>begin</code> or after <code>commit</code>, never in between. The less time a transaction holds row locks, the smaller the window for a cycle. Index foreign key columns too: a delete or key update on a parent table must find the child rows, and a sequential scan makes that transaction much slower.</p><h2>Step 4: retry the loser</h2><p>Even with good ordering, a rare deadlock can still happen. Postgres has already rolled the transaction back, so retrying the whole transaction is safe. With supabase-js the SQLSTATE is in <code>error.code</code>; with node-postgres it's <code>err.code</code>:</p><pre><code>const RETRYABLE = new Set(['40P01', '40001']);   // deadlock, serialization failure
+
+async function withRetry&lt;T&gt;(fn: () =&gt; Promise&lt;T&gt;, attempts = 3): Promise&lt;T&gt; {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      if (!RETRYABLE.has(e?.code) || i &gt;= attempts) throw e;
+      await new Promise((r) =&gt; setTimeout(r, 50 * 2 ** i + Math.random() * 50));
+    }
+  }
+}
+
+await withRetry(async () =&gt; {
+  const { error } = await supabase.rpc('transfer', { from_id: 7, to_id: 3, amount: 25 });
+  if (error) throw error;
+});</code></pre><p>Retry only the whole unit of work, and only if it is safe to repeat (no email already sent from inside it).</p><h2>How to verify</h2><p>Reproduce with two <code>psql</code> sessions: in session 1 run <code>begin; update accounts set balance = balance where id = 1;</code>, in session 2 the same for id 2, then cross over. You get <code>40P01</code>. Repeat through the <code>transfer</code> function in both directions: the second call simply waits for the first and both succeed. In production the Postgres logs should stop showing <code>deadlock detected</code>.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../postgres-could-not-serialize-access-concurrent-update/">Postgres “could not serialize access due to concurrent update” (40001) – retry or redesign</a></li><li><a href="../supabase-canceling-statement-due-to-statement-timeout/">Supabase “canceling statement due to statement timeout” (57014) – fix the query, then the limit</a></li><li><a href="../supabase-too-many-connections-supavisor/">Supabase “too many connections” – Postgres slots, Supavisor limits and serverless pools</a></li><li><a href="../postgres-new-row-violates-check-constraint/">Postgres “new row for relation … violates check constraint” – find the rule and fix it</a></li></ul><p>More in <a href="../postgres-errors/">Postgres errors and performance</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

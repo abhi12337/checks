@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase: canceling statement due to statement timeout</title>
+<meta name="description" content="Why Supabase queries fail with &#x27;canceling statement due to statement timeout&#x27; (57014), the default limits per role, and how to fix the query before raising one.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-canceling-statement-due-to-statement-timeout/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase: canceling statement due to statement timeout">
+<meta property="og:description" content="Why Supabase queries fail with &#x27;canceling statement due to statement timeout&#x27; (57014), the default limits per role, and how to fix the query before raising one.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-canceling-statement-due-to-statement-timeout/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Supabase: canceling statement due to statement timeout">
+<meta name="twitter:description" content="Why Supabase queries fail with &#x27;canceling statement due to statement timeout&#x27; (57014), the default limits per role, and how to fix the query before raising one.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “canceling statement due to statement timeout” (57014) – fix the query, then the limit", "description": "Why Supabase queries fail with 'canceling statement due to statement timeout' (57014), the default limits per role, and how to fix the query before raising one.", "url": "https://abhi12337.github.io/checks/guides/supabase-canceling-statement-due-to-statement-timeout/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-canceling-statement-due-to-statement-timeout/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Postgres errors and performance", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Postgres errors and performance", "item": "https://abhi12337.github.io/checks/guides/postgres-errors/"}, {"@type": "ListItem", "position": 4, "name": "Supabase “canceling statement due to statement timeout” (57014) – fix the query, then the limit", "item": "https://abhi12337.github.io/checks/guides/supabase-canceling-statement-due-to-statement-timeout/"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is the default statement timeout in Supabase?", "acceptedAnswer": {"@type": "Answer", "text": "3 seconds for anon, 8 seconds for authenticated, and service_role falls back to the authenticator role's 8 seconds. The postgres role has no role-level timeout but is capped by a 2 minute global default."}}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../postgres-errors/">Postgres errors and performance</a></nav>
+<h1>Supabase “canceling statement due to statement timeout” (57014) – fix the query, then the limit</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>ERROR: canceling statement due to statement timeout   (SQLSTATE 57014)</code></pre>
+<article class="explainer"><h2>What it means</h2><p>The statement ran longer than the <code>statement_timeout</code> for the database role it ran as,
+so Postgres cancelled it. Supabase sets short defaults on purpose, so one slow API request can't hold a
+connection for minutes:</p>
+<table class="rules"><thead><tr><th>Role</th><th>Default timeout</th><th>Used by</th></tr></thead><tbody>
+<tr><td><code>anon</code></td><td>3 s</td><td>API requests without a signed-in user</td></tr>
+<tr><td><code>authenticated</code></td><td>8 s</td><td>API requests with a user JWT</td></tr>
+<tr><td><code>service_role</code></td><td>none set; falls back to the <code>authenticator</code> role's 8 s</td><td>server code with the secret key</td></tr>
+<tr><td><code>postgres</code></td><td>none, capped by a 2 min global default</td><td>SQL Editor, direct connections</td></tr>
+</tbody></table>
+<p>Supabase's docs also say Dashboard and client queries can be raised to at most 60 seconds; longer work belongs
+on a direct or pooled connection.</p><h2>Step 1: find out why it is slow</h2><p>Run the same query with <code>explain analyze</code> in the SQL Editor. For an API query, also run it as the API role, because RLS policies are part of the cost:</p><pre><code>begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"&lt;user-uuid&gt;","role":"authenticated"}', true);
+explain analyze
+select * from public.orders where status = 'open' order by created_at desc limit 50;
+rollback;</code></pre><p>Look for <code>Seq Scan</code> on a big table, a large <code>Rows Removed by Filter</code>, and a <code>SubPlan</code> that runs once per row (often an RLS policy). The dashboard's Query Performance report lists the slowest statements over time.</p><h2>Step 2: the usual fixes</h2><ul><li><strong>Add the missing index</strong> for the filter and sort columns, and for every column an RLS policy compares:</li></ul><pre><code>create index concurrently if not exists orders_status_created_at_idx
+  on public.orders (status, created_at desc);
+create index concurrently if not exists orders_user_id_idx
+  on public.orders (user_id);</code></pre><p class="muted">Run each <code>create index concurrently</code> on its own: it can't run inside a transaction block, so don't combine it with other statements in one run.</p><ul><li><strong>Make RLS cheap</strong>: write <code>(select auth.uid())</code> instead of <code>auth.uid()</code> in policies so it is evaluated once per statement.</li><li><strong>Paginate</strong>: <code>.range(0, 49)</code> instead of fetching everything.</li><li><strong>Avoid exact counts on big tables</strong>: <code>count: 'exact'</code> scans every visible row; <code>count: 'estimated'</code> or <code>'planned'</code> is far cheaper.</li><li><strong>Batch big writes</strong>: update or delete 1,000–10,000 rows per statement in a loop instead of one huge statement.</li></ul><h2>Step 3: raise the limit only where it is justified</h2><p>If a query is as fast as it can be and still needs more time, raise the timeout for that role, then tell the API layer to reload its settings:</p><pre><code>alter role authenticated set statement_timeout = '15s';
+notify pgrst, 'reload config';</code></pre><p>This applies to every request from that role, so keep it modest. For one long admin or migration job, set it for that session or transaction only over a direct or session-mode connection (it does not work through the Dashboard, the client API, or the transaction-mode pooler on port 6543):</p><pre><code>begin;
+set local statement_timeout = '10min';
+-- the long statement
+commit;</code></pre><h2>Where it shows up besides the API</h2><p>The SQL Editor runs as <code>postgres</code>, so a heavy one-off query is limited by the global cap. Cron jobs run as the role that scheduled them, so they hit that role's limit too. Creating an index on a large table can exceed it; use a direct connection for that kind of migration.</p><h2>How to verify</h2><p><code>explain analyze</code> shows an index scan and an execution time well under the role's limit. The same API call returns data instead of <code>57014</code>, and the timeout no longer appears when you search the Postgres logs for <code>statement timeout</code>.</p><section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">FAQ</h2><details><summary>What is the default statement timeout in Supabase?</summary><p>3 seconds for anon, 8 seconds for authenticated, and service_role falls back to the authenticator role&#x27;s 8 seconds. The postgres role has no role-level timeout but is capped by a 2 minute global default.</p></details></section><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-rls-performance-auth-uid-select/">Slow Supabase queries with RLS – (select auth.uid()), indexes and the other fixes</a></li><li><a href="../postgres-deadlock-detected/">Postgres “deadlock detected” (40P01) – read it, then remove the lock-order problem</a></li><li><a href="../supabase-too-many-connections-supavisor/">Supabase “too many connections” – Postgres slots, Supavisor limits and serverless pools</a></li><li><a href="../postgres-new-row-violates-check-constraint/">Postgres “new row for relation … violates check constraint” – find the rule and fix it</a></li></ul><p>More in <a href="../postgres-errors/">Postgres errors and performance</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

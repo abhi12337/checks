@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Audit logging for AI agent tool calls (with SQL)</title>
+<meta name="description" content="What to record for every AI agent tool call, how to keep the log append-only in Postgres, what to redact, and the queries that answer &#x27;what did it do?&#x27;">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Audit logging for AI agent tool calls (with SQL)">
+<meta property="og:description" content="What to record for every AI agent tool call, how to keep the log append-only in Postgres, what to redact, and the queries that answer &#x27;what did it do?&#x27;">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Audit logging for AI agent tool calls (with SQL)">
+<meta name="twitter:description" content="What to record for every AI agent tool call, how to keep the log append-only in Postgres, what to redact, and the queries that answer &#x27;what did it do?&#x27;">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Audit logs for AI agent tool calls – record enough to answer “why did it do that?”", "description": "What to record for every AI agent tool call, how to keep the log append-only in Postgres, what to redact, and the queries that answer 'what did it do?'", "url": "https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "AI agent and LLM app security", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "AI agent and LLM app security", "item": "https://abhi12337.github.io/checks/guides/ai-security/"}, {"@type": "ListItem", "position": 4, "name": "Audit logs for AI agent tool calls – record enough to answer “why did it do that?”", "item": "https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/"}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../ai-security/">AI agent and LLM app security</a></nav>
+<h1>Audit logs for AI agent tool calls – record enough to answer “why did it do that?”</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>Risk: an agent sent an email, deleted a record or leaked data, and nobody can say which input caused it, who approved it, or what else it did</code></pre>
+<article class="explainer"><h2>Why agents need their own audit trail</h2><p>Normal request logs show that <code>POST /api/agent</code> returned 200. They don't show that the agent
+read an email from a stranger, then called <code>search_files</code> twice and <code>send_email</code> once. When
+an agent misbehaves (prompt injection, a bug, a bad model update), you need to reconstruct the chain: which
+untrusted content was in context, which tool calls followed, which ones were blocked, and who confirmed the
+rest. Logging and monitoring tool use is one of the mitigations OWASP lists for LLM06 Excessive Agency.</p><h2>What to record for each tool call</h2><ul>
+<li><strong>Who and where</strong>: user id, tenant, session, and a <code>trace_id</code> shared by every call in
+one agent run.</li>
+<li><strong>Which agent</strong>: agent name, model id and a prompt or config version, so you can tie behaviour
+changes to deployments.</li>
+<li><strong>What</strong>: tool name and arguments, with secrets and personal data redacted.</li>
+<li><strong>Decision</strong>: allowed, denied by policy, waiting for confirmation, or confirmed (and by
+whom).</li>
+<li><strong>Outcome</strong>: success or error, result size, latency.</li>
+<li><strong>Provenance</strong>: ids of untrusted inputs in the context at that moment (email ids, document ids,
+URLs). This is what links an action back to an injection.</li>
+</ul>
+<p>Don't store full prompts and results by default: they hold user data and make the log a target. Store ids and
+hashes, and keep full transcripts only where you have a reason and a retention limit.</p><h2>An append-only table in Postgres</h2><pre><code>create schema if not exists private;
+
+create table private.agent_audit_log (
+  id                bigint generated always as identity primary key,
+  at                timestamptz not null default now(),
+  trace_id          uuid not null,
+  user_id           uuid,
+  agent             text not null,
+  model             text,
+  config_version    text,
+  tool              text not null,
+  args              jsonb not null,
+  decision          text not null
+                    check (decision in ('allowed', 'denied', 'needs_confirmation', 'confirmed')),
+  confirmed_by      uuid,
+  status            text,
+  untrusted_sources text[] not null default '{}',
+  latency_ms        int
+);
+
+create index on private.agent_audit_log (trace_id);
+create index on private.agent_audit_log (user_id, at desc);
+
+revoke all on private.agent_audit_log from public, anon, authenticated;
+
+create or replace function private.audit_log_is_append_only()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'agent_audit_log is append-only';
+end;
+$$;
+
+create trigger agent_audit_log_no_change
+  before update or delete or truncate on private.agent_audit_log
+  for each statement execute function private.audit_log_is_append_only();</code></pre><p>The trigger stops accidental or application-level edits. A database owner can still drop it, so for tamper evidence also ship the rows to a separate log store that the application can't delete from.</p><h2>Log in the dispatcher, not in each tool</h2><p>Wrap every tool call in one place, so no tool can be called without a record, including denied and failed calls:</p><pre><code>const SECRET_KEYS = /pass(word)?|token|secret|api[_-]?key|authorization/i;
+
+function redact(args: Record&lt;string, unknown&gt;) {
+  return Object.fromEntries(Object.entries(args).map(([k, v]) =&gt;
+    [k, SECRET_KEYS.test(k) ? '[redacted]' : typeof v === 'string' &amp;&amp; v.length &gt; 500 ? v.slice(0, 500) + '…' : v]));
+}
+
+export async function dispatch(ctx: AgentContext, tool: string, args: Record&lt;string, unknown&gt;) {
+  const started = Date.now();
+  const decision = policy(ctx, tool, args);           // 'allowed' | 'denied' | 'needs_confirmation'
+  let status = decision === 'allowed' ? 'error' : decision;
+  try {
+    if (decision !== 'allowed') return { status: decision };
+    const result = await TOOLS[tool](ctx.user, args);
+    status = 'ok';
+    return result;
+  } finally {
+    await admin.schema('private').from('agent_audit_log').insert({
+      trace_id: ctx.traceId, user_id: ctx.user.id, agent: ctx.agent, model: ctx.model,
+      config_version: ctx.configVersion, tool, args: redact(args), decision, status,
+      untrusted_sources: ctx.untrustedSources, latency_ms: Date.now() - started,
+    });
+  }
+}</code></pre><p>The insert uses a server-only client. Expose the <code>private</code> schema to that client only, or write through a <code>security definer</code> function instead.</p><h2>Questions the log should answer</h2><pre><code>-- everything one agent run did, in order
+select at, tool, decision, status, untrusted_sources
+from private.agent_audit_log where trace_id = $1 order by at;
+
+-- outbound actions taken right after reading untrusted content
+select user_id, tool, at, untrusted_sources
+from private.agent_audit_log
+where tool in ('send_email', 'share_file') and cardinality(untrusted_sources) &gt; 0
+order by at desc limit 50;
+
+-- users hitting the policy wall (probing or injection attempts)
+select user_id, count(*) as denied_today
+from private.agent_audit_log
+where decision = 'denied' and at &gt; now() - interval '1 day'
+group by user_id order by denied_today desc limit 20;</code></pre><p>Alert on spikes in denied calls, outbound actions after untrusted input, and tools a user has never used before.</p><h2>How to verify</h2><p>Run an agent session with a canary injection in a test email. The log shows every call in that trace, the blocked <code>send_email</code> with <code>decision = 'denied'</code> or <code>'needs_confirmation'</code>, and the email id in <code>untrusted_sources</code>. <code>update private.agent_audit_log set tool = 'x'</code> fails with the append-only error, and no API key appears in <code>args</code>.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../llm-tool-calling-least-privilege/">LLM tool calls with over-broad permissions – a least-privilege pattern that holds</a></li><li><a href="../indirect-prompt-injection-email-calendar-agent/">Indirect prompt injection in email and calendar agents – one message, full access</a></li><li><a href="../mcp-server-security-basics/">MCP server security basics – untrusted tool descriptions, local code and token scope</a></li><li><a href="../rag-prompt-injection-retrieved-documents/">Prompt injection through retrieved documents (RAG) – what it is and how to contain it</a></li></ul><p>More in <a href="../ai-security/">AI agent and LLM app security</a> · <a href="../">all guides</a></p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

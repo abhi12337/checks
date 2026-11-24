@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Committed .env or API key to Git? Rotate, then clean</title>
+<meta name="description" content="You pushed a .env file or API key to GitHub. Rotate the secrets first, then remove them from Git history with git-filter-repo, and block the next leak.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/leaked-env-secrets-git-history/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Committed .env or API key to Git? Rotate, then clean">
+<meta property="og:description" content="You pushed a .env file or API key to GitHub. Rotate the secrets first, then remove them from Git history with git-filter-repo, and block the next leak.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/leaked-env-secrets-git-history/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Committed .env or API key to Git? Rotate, then clean">
+<meta name="twitter:description" content="You pushed a .env file or API key to GitHub. Rotate the secrets first, then remove them from Git history with git-filter-repo, and block the next leak.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "A .env file or API key in Git history – rotate first, then rewrite history", "description": "You pushed a .env file or API key to GitHub. Rotate the secrets first, then remove them from Git history with git-filter-repo, and block the next leak.", "url": "https://abhi12337.github.io/checks/guides/leaked-env-secrets-git-history/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/leaked-env-secrets-git-history/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Auth, JWT and secrets", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Auth, JWT and secrets", "item": "https://abhi12337.github.io/checks/guides/auth-jwt/"}, {"@type": "ListItem", "position": 4, "name": "A .env file or API key in Git history – rotate first, then rewrite history", "item": "https://abhi12337.github.io/checks/guides/leaked-env-secrets-git-history/"}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../auth-jwt/">Auth, JWT and secrets</a></nav>
+<h1>A .env file or API key in Git history – rotate first, then rewrite history</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>Risk: .env, service account JSON, sk_live_..., sb_secret_... or a database URL committed to a repository, even if a later commit deleted it</code></pre>
+<article class="explainer"><h2>Why deleting the file is not enough</h2><p>A later commit that deletes <code>.env</code> removes it from the current files, not from history.
+Anyone with the repository can run <code>git log -p</code> and read it. Public repositories are scanned by bots
+continuously, so assume a secret pushed to a public repo was copied within minutes. Rewriting history helps
+for the future, but it can't un-copy anything: forks and clones keep the old commits. That is why rotation
+comes first.</p><h2>Step 1: rotate every secret in the file, now</h2><p>GitHub's own guide says the first step is to revoke or rotate the secret. Go provider by provider:</p>
+<ul>
+<li><strong>Supabase</strong>: create a new secret API key and delete the leaked one (or, with the legacy
+JWT-based keys, rotate the JWT secret, which also signs out users). Reset the database password if the
+connection string leaked.</li>
+<li><strong>Stripe</strong>: roll the secret key in the Dashboard; replace webhook signing secrets that were in
+the file.</li>
+<li><strong>OpenAI, Anthropic and other AI providers</strong>: delete the key and create a new one, then check
+usage for spikes.</li>
+<li><strong>Cloud credentials</strong>: deactivate the access key or service account key, then review the
+provider's audit log for activity from it.</li>
+</ul>
+<p>Update the new values in your hosting provider's environment settings and redeploy. Then check each
+provider's logs for use of the old key between the push and the rotation.</p><h2>Step 2: find every commit that contains it</h2><pre><code>git log --all --full-history --oneline -- .env
+git log --all -p -S 'sk_live_' --oneline      # search contents by a fragment of the secret</code></pre><h2>Step 3: stop tracking the file</h2><pre><code>echo ".env*" &gt;&gt; .gitignore
+echo "!.env.example" &gt;&gt; .gitignore
+git rm --cached .env
+git commit -m "Stop tracking .env"</code></pre><h2>Step 4: rewrite history with git-filter-repo</h2><p>Work on a fresh clone. GitHub's guide uses <code>git-filter-repo</code> (version 2.47 or later for the <code>--sensitive-data-removal</code> option):</p><pre><code>git clone git@github.com:you/app.git app-clean &amp;&amp; cd app-clean
+
+# remove the file from every commit
+git filter-repo --sensitive-data-removal --invert-paths --path .env
+
+# or replace secret strings wherever they appear (one per line in a file outside the repo)
+#   ../secrets.txt contains lines like:  sk_live_abc123==&gt;REMOVED
+git filter-repo --sensitive-data-removal --replace-text ../secrets.txt
+
+git push --force --mirror origin</code></pre><p>Pushes to <code>refs/pull/*</code> are rejected because GitHub treats them as read-only, so old pull requests can still show the secret. GitHub's guide says to contact GitHub Support with the repository and the first changed commits so they can remove cached views and affected pull request refs. Everyone with a clone must re-clone; an old clone pushed back brings the secret back.</p><h2>Step 5: block the next one</h2><ul>
+<li>Turn on <strong>secret scanning and push protection</strong> in the repository's security settings, so GitHub
+blocks pushes that contain recognised keys.</li>
+<li>Add a local check, for example <code>gitleaks git</code> in CI and as a pre-commit hook, to catch keys
+GitHub doesn't recognise.</li>
+<li>Keep a committed <code>.env.example</code> with names only, and real values in your host's secret store.</li>
+<li>Keep server secrets out of variables with public prefixes (<code>NEXT_PUBLIC_</code>, <code>VITE_</code>):
+those end up in the browser bundle anyway.</li>
+</ul><h2>How to verify</h2><p>The old keys fail with an authentication error at each provider. <code>git log --all -p -S '&lt;fragment&gt;'</code> on a fresh clone finds nothing. A test commit containing a fake key in a recognised format is blocked by push protection.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-service-role-key-exposed/">Supabase service_role or secret key exposed in frontend code – detect, rotate, fix</a></li><li><a href="../ai-api-key-system-prompt-exposed-frontend/">AI API keys and system prompts in frontend code – find them and move the call server-side</a></li><li><a href="../llm-api-per-user-quota-unbounded-consumption/">Per-user token quotas for an LLM endpoint – stop unbounded consumption (OWASP LLM10)</a></li><li><a href="../supabase-jwt-expired/">Supabase “JWT expired” – why the token went stale and how to keep it fresh</a></li></ul><p>More in <a href="../auth-jwt/">Auth, JWT and secrets</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

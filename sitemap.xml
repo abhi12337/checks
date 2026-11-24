@@ -19,9 +19,14 @@
   <url><loc>https://abhi12337.github.io/checks/postgres-migration-lock-checker/</loc><lastmod>2026-11-24</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/postgres-missing-foreign-key-index/</loc><lastmod>2026-11-24</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/guides/</loc><lastmod>2026-11-24</lastmod></url>
-  <url><loc>https://abhi12337.github.io/checks/guides/supabase-new-row-violates-row-level-security-policy/</loc><lastmod>2026-11-24</lastmod></url>
-  <url><loc>https://abhi12337.github.io/checks/guides/supabase-must-be-owner-of-table-objects/</loc><lastmod>2026-11-24</lastmod></url>
-  <url><loc>https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-rls/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/auth-jwt/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/edge-functions/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/postgres-errors/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/ai-security/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-new-row-violates-row-level-security-policy/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-must-be-owner-of-table-objects/</loc><lastmod>2026-11-23</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/</loc><lastmod>2026-11-23</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/guides/supabase-permission-denied-for-table/</loc><lastmod>2026-11-24</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/guides/supabase-infinite-recursion-detected-in-policy/</loc><lastmod>2026-11-24</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/guides/supabase-jwt-expired/</loc><lastmod>2026-11-24</lastmod></url>
@@ -42,5 +47,25 @@
   <url><loc>https://abhi12337.github.io/checks/guides/ai-api-key-system-prompt-exposed-frontend/</loc><lastmod>2026-11-24</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/guides/mcp-server-security-basics/</loc><lastmod>2026-11-24</lastmod></url>
   <url><loc>https://abhi12337.github.io/checks/guides/llm-output-xss-sql-shell-injection/</loc><lastmod>2026-11-24</lastmod></url>
-  <url><loc>https://abhi12337.github.io/checks/spot-the-ai-attack/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-storage-object-not-found/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-delete-user-violates-foreign-key-constraint/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-email-link-is-invalid-or-has-expired/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-oauth-redirect-uri-mismatch/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-database-error-saving-new-user/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/postgres-deadlock-detected/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-canceling-statement-due-to-statement-timeout/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/postgres-could-not-serialize-access-concurrent-update/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-rls-performance-auth-uid-select/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-pg-cron-job-not-running/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/supabase-database-webhook-pg-net-not-firing/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/api-rate-limiting-429-too-many-requests/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/leaked-env-secrets-git-history/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/ssrf-ai-agent-url-fetch-tool/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/indirect-prompt-injection-email-calendar-agent/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/jailbreak-vs-prompt-injection/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/llm-api-per-user-quota-unbounded-consumption/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/guides/ai-agent-tool-call-audit-log/</loc><lastmod>2026-11-24</lastmod></url>
+  <url><loc>https://abhi12337.github.io/checks/spot-the-ai-attack/</loc><lastmod>2026-11-23</lastmod></url>
 </urlset>

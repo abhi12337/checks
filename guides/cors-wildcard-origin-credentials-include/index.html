@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>CORS: wildcard &#x27;*&#x27; not allowed with credentials (fix)</title>
+<meta name="description" content="Fix the CORS error &#x27;Access-Control-Allow-Origin must not be the wildcard * when the request&#x27;s credentials mode is include&#x27; without opening your API.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="CORS: wildcard &#x27;*&#x27; not allowed with credentials (fix)">
+<meta property="og:description" content="Fix the CORS error &#x27;Access-Control-Allow-Origin must not be the wildcard * when the request&#x27;s credentials mode is include&#x27; without opening your API.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CORS: wildcard &#x27;*&#x27; not allowed with credentials (fix)">
+<meta name="twitter:description" content="Fix the CORS error &#x27;Access-Control-Allow-Origin must not be the wildcard * when the request&#x27;s credentials mode is include&#x27; without opening your API.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "CORS “must not be the wildcard '*' when the request's credentials mode is 'include'” – the safe fix", "description": "Fix the CORS error 'Access-Control-Allow-Origin must not be the wildcard * when the request's credentials mode is include' without opening your API.", "url": "https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Edge Functions, webhooks and APIs", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Edge Functions, webhooks and APIs", "item": "https://abhi12337.github.io/checks/guides/edge-functions/"}, {"@type": "ListItem", "position": 4, "name": "CORS “must not be the wildcard '*' when the request's credentials mode is 'include'” – the safe fix", "item": "https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Can I use Access-Control-Allow-Origin: * with cookies?", "acceptedAnswer": {"@type": "Answer", "text": "No. Browsers reject a wildcard origin for requests sent with credentials. Return the exact, allowlisted origin and Access-Control-Allow-Credentials: true, or stop sending cookies and use a bearer token instead."}}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../edge-functions/">Edge Functions, webhooks and APIs</a></nav>
+<h1>CORS “must not be the wildcard &#x27;*&#x27; when the request&#x27;s credentials mode is &#x27;include&#x27;” – the safe fix</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>Access to fetch at &#x27;https://api.example.com/me&#x27; from origin &#x27;https://app.example.com&#x27; has been blocked by CORS policy: The value of the &#x27;Access-Control-Allow-Origin&#x27; header in the response must not be the wildcard &#x27;*&#x27; when the request&#x27;s credentials mode is &#x27;include&#x27;.</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Your frontend calls the API with <code>credentials: 'include'</code> (fetch) or
+<code>withCredentials: true</code> (axios), so the browser attaches cookies. For credentialed requests the
+CORS rules are stricter: the response must name the exact origin in <code>Access-Control-Allow-Origin</code>
+and send <code>Access-Control-Allow-Credentials: true</code>. A <code>*</code> is rejected. Firefox reports
+the same problem as “Credential is not supported if the CORS header 'Access-Control-Allow-Origin' is '*'”. A
+sibling message in Chrome is “The value of the 'Access-Control-Allow-Credentials' header in the response is ''
+which must be 'true' when the request's credentials mode is 'include'”.</p>
+<p>The server usually did handle the request; the browser just refuses to hand the response to your
+JavaScript.</p><h2>The tempting fix that creates a hole</h2><p>Reflecting whatever <code>Origin</code> the request has, together with
+<code>Allow-Credentials: true</code>, makes the error go away and lets <em>any</em> website read your users'
+data with their cookies: a page on <code>evil.example</code> calls your API from the victim's browser and reads
+the response. The same goes for allowing the origin <code>null</code>, which sandboxed iframes can send. Use an
+allowlist.</p><h2>Fix: an exact allowlist (fetch-style handlers, Next.js, Hono, Edge Functions)</h2><pre><code>const ALLOWED_ORIGINS = new Set(['https://app.example.com', 'http://localhost:3000']);
+
+function corsHeaders(origin: string | null): Record&lt;string, string&gt; {
+  const headers: Record&lt;string, string&gt; = { Vary: 'Origin' };
+  if (origin &amp;&amp; ALLOWED_ORIGINS.has(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+  }
+  return headers;
+}
+
+// preflight
+export async function OPTIONS(req: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(req.headers.get('origin')) });
+}
+
+export async function GET(req: Request) {
+  const data = await loadCurrentUser(req);
+  return Response.json(data, { headers: corsHeaders(req.headers.get('origin')) });
+}</code></pre><p><code>Vary: Origin</code> stops a CDN from caching one origin's headers and serving them to another. With credentials, <code>*</code> in <code>Allow-Headers</code> or <code>Allow-Methods</code> is treated literally, not as a wildcard, so list them.</p><h2>Fix: Express</h2><pre><code>import cors from 'cors';
+
+const ALLOWED_ORIGINS = new Set(['https://app.example.com', 'http://localhost:3000']);
+
+app.use(cors({
+  origin(origin, callback) {
+    // no Origin header = not a browser cross-origin request; CORS does not apply
+    callback(null, !origin || ALLOWED_ORIGINS.has(origin));
+  },
+  credentials: true,
+}));</code></pre><h2>Cookies have their own rules</h2><p>Even with correct CORS headers, the browser only sends a cookie if the cookie allows it. A frontend on
+<code>app.example.com</code> and an API on <code>api.example.com</code> are the <em>same site</em>, so
+<code>SameSite=Lax</code> cookies work. A frontend on <code>myapp.vercel.app</code> calling
+<code>api.example.com</code> is cross-site: the cookie needs <code>SameSite=None; Secure</code>, and browsers
+that block third-party cookies may still drop it. Putting the API on a subdomain of your app's domain avoids
+that.</p><h2>Or don&#x27;t use cookies for the API</h2><p>If the API authenticates with an <code>Authorization: Bearer</code> token (as Supabase clients do), the request doesn't need <code>credentials: 'include'</code> at all. Remove it, and the credentials rules no longer apply.</p><h2>How to verify</h2><pre><code>curl -si -X OPTIONS https://api.example.com/me \
+  -H 'Origin: https://app.example.com' \
+  -H 'Access-Control-Request-Method: GET' | grep -i '^access-control\|^vary'
+
+curl -si https://api.example.com/me -H 'Origin: https://evil.example' | grep -i '^access-control'</code></pre><p>The first shows your exact origin and <code>Access-Control-Allow-Credentials: true</code>; the second shows no <code>Access-Control-Allow-*</code> headers. In the browser, the request succeeds from your app and the Network tab shows the cookie sent.</p><section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">FAQ</h2><details><summary>Can I use Access-Control-Allow-Origin: * with cookies?</summary><p>No. Browsers reject a wildcard origin for requests sent with credentials. Return the exact, allowlisted origin and Access-Control-Allow-Credentials: true, or stop sending cookies and use a bearer token instead.</p></details></section><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-edge-function-cors-header-not-allowed/">Supabase Edge Function CORS errors from the browser – headers, preflight and error responses</a></li><li><a href="../supabase-edge-function-404-not-found-cors-preflight/">Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight</a></li><li><a href="../api-rate-limiting-429-too-many-requests/">Rate limiting an API route – return 429 Too Many Requests before abuse costs you</a></li><li><a href="../supabase-edge-function-401-invalid-jwt/">Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”</a></li></ul><p>More in <a href="../edge-functions/">Edge Functions, webhooks and APIs</a> · <a href="../">all guides</a></p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

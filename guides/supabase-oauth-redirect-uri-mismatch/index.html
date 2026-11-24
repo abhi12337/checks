@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Supabase Google/GitHub login: redirect_uri_mismatch</title>
+<meta name="description" content="Fix &#x27;Error 400: redirect_uri_mismatch&#x27; (Google) and &#x27;The redirect_uri MUST match the registered callback URL&#x27; (GitHub) with Supabase Auth social login.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-oauth-redirect-uri-mismatch/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Supabase Google/GitHub login: redirect_uri_mismatch">
+<meta property="og:description" content="Fix &#x27;Error 400: redirect_uri_mismatch&#x27; (Google) and &#x27;The redirect_uri MUST match the registered callback URL&#x27; (GitHub) with Supabase Auth social login.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-oauth-redirect-uri-mismatch/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Supabase Google/GitHub login: redirect_uri_mismatch">
+<meta name="twitter:description" content="Fix &#x27;Error 400: redirect_uri_mismatch&#x27; (Google) and &#x27;The redirect_uri MUST match the registered callback URL&#x27; (GitHub) with Supabase Auth social login.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "redirect_uri_mismatch with Supabase Google or GitHub login – which URL goes where", "description": "Fix 'Error 400: redirect_uri_mismatch' (Google) and 'The redirect_uri MUST match the registered callback URL' (GitHub) with Supabase Auth social login.", "url": "https://abhi12337.github.io/checks/guides/supabase-oauth-redirect-uri-mismatch/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-oauth-redirect-uri-mismatch/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Auth, JWT and secrets", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Auth, JWT and secrets", "item": "https://abhi12337.github.io/checks/guides/auth-jwt/"}, {"@type": "ListItem", "position": 4, "name": "redirect_uri_mismatch with Supabase Google or GitHub login – which URL goes where", "item": "https://abhi12337.github.io/checks/guides/supabase-oauth-redirect-uri-mismatch/"}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../auth-jwt/">Auth, JWT and secrets</a></nav>
+<h1>redirect_uri_mismatch with Supabase Google or GitHub login – which URL goes where</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>Error 400: redirect_uri_mismatch
+The redirect_uri MUST match the registered callback URL for this application.</code></pre>
+<article class="explainer"><h2>What it means</h2><p>In an OAuth login, the provider (Google, GitHub, Apple, Microsoft) sends the user back to a
+<em>redirect URI</em> after they approve. The provider only accepts URIs you registered in its console. With
+Supabase Auth, the redirect URI the provider sees is <strong>Supabase's callback</strong>, not your app. If
+that exact URL isn't registered, Google shows <code>Error 400: redirect_uri_mismatch</code> and GitHub
+returns “The redirect_uri MUST match the registered callback URL for this application.”</p><h2>Two different URLs, two different places</h2><table class="rules"><thead><tr><th>URL</th><th>Example</th><th>Register it in</th></tr></thead><tbody>
+<tr><td>Supabase callback (provider → Supabase)</td><td><code>https://&lt;project-ref&gt;.supabase.co/auth/v1/callback</code></td>
+<td>Google Cloud console: <em>Authorized redirect URIs</em>. GitHub OAuth app: <em>Authorization callback URL</em>.</td></tr>
+<tr><td>Your app (Supabase → your app)</td><td><code>https://app.example.com/auth/callback</code></td>
+<td>Supabase: Authentication → URL Configuration → <em>Redirect URLs</em>.</td></tr>
+</tbody></table>
+<p>The classic mistake is putting <code>https://app.example.com/auth/callback</code> into Google. Google never
+sends users there; Supabase does.</p><h2>Fix, step by step</h2><ol>
+<li>Open the provider's page in the Supabase dashboard (Authentication → Sign In / Providers → Google). Copy the
+<strong>Callback URL</strong> shown there.</li>
+<li>Paste it exactly into the provider console. For Google: the OAuth client's <em>Authorized redirect
+URIs</em>. Under <em>Authorized JavaScript origins</em> put only your site's origin, such as
+<code>https://app.example.com</code>, with no path.</li>
+<li>Compare character by character: <code>https</code> vs <code>http</code>, trailing slash, and the project ref.
+Google says changes can take a few minutes to apply.</li>
+<li>If you use a Supabase custom domain, the provider sees <code>https://auth.example.com/auth/v1/callback</code>
+instead. Register that one (you can keep both while you switch).</li>
+<li>For local development with the Supabase CLI, register <code>http://127.0.0.1:54321/auth/v1/callback</code>
+in a separate development OAuth client.</li>
+</ol><h2>GitHub allows one callback URL per OAuth app</h2><p>A GitHub OAuth app has a single <em>Authorization callback URL</em>. Create one app for local development and one for production, each with its own client id and secret, and set them in the matching Supabase project or local config.</p><h2>Then send users back to your app</h2><pre><code>const { error } = await supabase.auth.signInWithOAuth({
+  provider: 'google',
+  options: { redirectTo: `${window.location.origin}/auth/callback` },
+});</code></pre><p><code>redirectTo</code> must be on the Supabase <em>Redirect URLs</em> allow list. If it isn't, the login succeeds but the user lands on your Site URL instead. With the server-side (PKCE) flow, your <code>/auth/callback</code> route exchanges the code:</p><pre><code>// app/auth/callback/route.ts
+import { NextResponse } from 'next/server';
+import { createClient } from '@/utils/supabase/server';
+
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get('code');
+  if (code) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) return NextResponse.redirect(`${origin}/dashboard`);
+  }
+  return NextResponse.redirect(`${origin}/auth/error`);
+}</code></pre><h2>How to verify</h2><p>Start the login in a private window. The provider's consent screen appears (no error page), you return through <code>…/auth/v1/callback</code>, and you land on <code>/dashboard</code> on your own domain with a session. Repeat on a Vercel preview URL if you use them: the preview pattern must be on the Supabase allow list, but nothing changes in Google.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-email-link-is-invalid-or-has-expired/">Supabase “Email link is invalid or has expired” and confirmation links that open localhost</a></li><li><a href="../supabase-jwt-expired/">Supabase “JWT expired” – why the token went stale and how to keep it fresh</a></li><li><a href="../supabase-database-error-saving-new-user/">Supabase “Database error saving new user” – find the failing trigger and fix it</a></li><li><a href="../supabase-service-role-key-exposed/">Supabase service_role or secret key exposed in frontend code – detect, rotate, fix</a></li></ul><p>More in <a href="../auth-jwt/">Auth, JWT and secrets</a> · <a href="../">all guides</a></p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>

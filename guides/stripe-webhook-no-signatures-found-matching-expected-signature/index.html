@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Stripe webhook: No signatures found matching (fix)</title>
+<meta name="description" content="Fix Stripe &#x27;No signatures found matching the expected signature for payload&#x27; in Next.js, Express and Supabase Edge Functions: raw body, right secret, async.">
+<link rel="canonical" href="https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Local Code Checks">
+<meta property="og:title" content="Stripe webhook: No signatures found matching (fix)">
+<meta property="og:description" content="Fix Stripe &#x27;No signatures found matching the expected signature for payload&#x27; in Next.js, Express and Supabase Edge Functions: raw body, right secret, async.">
+<meta property="og:url" content="https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Stripe webhook: No signatures found matching (fix)">
+<meta name="twitter:description" content="Fix Stripe &#x27;No signatures found matching the expected signature for payload&#x27; in Next.js, Express and Supabase Edge Functions: raw body, right secret, async.">
+<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Stripe “No signatures found matching the expected signature for payload” – raw body and the right secret", "description": "Fix Stripe 'No signatures found matching the expected signature for payload' in Next.js, Express and Supabase Edge Functions: raw body, right secret, async.", "url": "https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Edge Functions, webhooks and APIs", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Edge Functions, webhooks and APIs", "item": "https://abhi12337.github.io/checks/guides/edge-functions/"}, {"@type": "ListItem", "position": 4, "name": "Stripe “No signatures found matching the expected signature for payload” – raw body and the right secret", "item": "https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/"}]}</script>
+<script src="../../static/theme.js?v=045fcd4b08"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+  </div>
+</header>
+<main class="wrap">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../edge-functions/">Edge Functions, webhooks and APIs</a></nav>
+<h1>Stripe “No signatures found matching the expected signature for payload” – raw body and the right secret</h1>
+<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<pre class="error-text"><code>StripeSignatureVerificationError: No signatures found matching the expected signature for payload. Are you passing the raw request body you received from Stripe?</code></pre>
+<article class="explainer"><h2>What it means</h2><p>Stripe signs every webhook: the <code>Stripe-Signature</code> header holds a timestamp and an
+HMAC-SHA256 of <code>timestamp.body</code>, made with your endpoint's signing secret (<code>whsec_…</code>).
+<code>stripe.webhooks.constructEvent()</code> recomputes it from the body and secret you pass. This error means
+the two don't match. Only two things go into that calculation, so it is always one of them: the body you passed
+is not byte-for-byte what Stripe sent, or the secret is not this endpoint's secret.</p><h2>Cause 1: the body was parsed and re-serialised</h2><p>If anything turned the body into an object first (<code>express.json()</code>, Next.js
+<code>req.json()</code>, a body parser in a framework or proxy), then <code>JSON.stringify</code> produces
+different whitespace and key order, and the signature no longer matches. Passing the parsed object itself
+gives a different message: “Webhook payload must be provided as a string or a Buffer … representing the
+_raw_ request body”.</p><h2>Cause 2: the wrong signing secret</h2><ul>
+<li><code>stripe listen</code> prints its own <code>whsec_</code> secret, different from the Dashboard
+endpoint's secret.</li>
+<li>Test mode and live mode endpoints have different secrets, and every endpoint has its own.</li>
+<li>The secret is the <code>whsec_…</code> value, not your <code>sk_</code> API key.</li>
+<li>Extra spaces or quotes in the environment variable.</li>
+</ul><h2>Fix: Next.js App Router</h2><pre><code>// app/api/webhooks/stripe/route.ts
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export async function POST(req: Request) {
+  const body = await req.text();                       // raw body: never req.json() here
+  const signature = req.headers.get('stripe-signature') ?? '';
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch (err) {
+    return new Response(`Webhook Error: ${(err as Error).message}`, { status: 400 });
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    // fulfil the order; make this idempotent on event.id
+  }
+  return new Response('ok');
+}</code></pre><h2>Fix: Express</h2><p>Give the webhook route a raw body parser, and register it <em>before</em> any global <code>express.json()</code>:</p><pre><code>app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), (req, res) =&gt; {
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+  res.json({ received: true });
+});
+
+app.use(express.json());   // everything else</code></pre><h2>Fix: Supabase Edge Functions (Deno)</h2><p>Deno uses the Web Crypto API, which is asynchronous, so use <code>constructEventAsync</code> with the SubtleCrypto provider:</p><pre><code>import Stripe from 'npm:stripe';
+
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!);
+const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
+Deno.serve(async (req) =&gt; {
+  const signature = req.headers.get('Stripe-Signature') ?? '';
+  const body = await req.text();
+  let event: Stripe.Event;
+  try {
+    event = await stripe.webhooks.constructEventAsync(
+      body, signature, Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET')!, undefined, cryptoProvider,
+    );
+  } catch (err) {
+    return new Response((err as Error).message, { status: 400 });
+  }
+  console.log(event.type);
+  return new Response(JSON.stringify({ ok: true }), { status: 200 });
+});</code></pre><pre><code>supabase secrets set STRIPE_SECRET_KEY=sk_... STRIPE_WEBHOOK_SIGNING_SECRET=whsec_...
+supabase functions deploy stripe-webhook --no-verify-jwt</code></pre><p><code>--no-verify-jwt</code> is needed because Stripe doesn't send a Supabase JWT. The Stripe signature check is your authentication, so never skip it.</p><h2>Two related messages</h2><ul><li><code>Timestamp outside the tolerance zone</code>: the signed timestamp is more than 300 seconds (the default tolerance) away from your server's clock. Check the clock, and don't replay old events through your own scripts.</li><li><code>Unable to extract timestamp and signatures from header</code>: the <code>Stripe-Signature</code> header is missing or mangled, often a proxy or a test request without it.</li></ul><h2>How to verify</h2><pre><code>stripe listen --forward-to localhost:3000/api/webhooks/stripe   # use the whsec_ it prints
+stripe trigger checkout.session.completed</code></pre><p>The CLI shows <code>[200]</code> for the event. A request with a modified body or a wrong signature (for example a plain curl POST) gets 400. In the Dashboard, the endpoint's recent deliveries show 200.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-edge-function-401-invalid-jwt/">Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”</a></li><li><a href="../supabase-database-webhook-pg-net-not-firing/">Supabase Database Webhooks and pg_net requests that never arrive – how to debug them</a></li><li><a href="../api-rate-limiting-429-too-many-requests/">Rate limiting an API route – return 429 Too Many Requests before abuse costs you</a></li><li><a href="../supabase-edge-function-404-not-found-cors-preflight/">Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight</a></li></ul><p>More in <a href="../edge-functions/">Edge Functions, webhooks and APIs</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a> (runs in your browser, nothing uploaded).</p></article>
+<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
+    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
+    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
+    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
+    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
+    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
+  </div>
+</footer>
+</body>
+</html>
