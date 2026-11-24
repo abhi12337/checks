@@ -5,8 +5,8 @@
   const cfg = JSON.parse(document.getElementById("page-config").textContent);
   const $ = (id) => document.getElementById(id);
 
-  // ------------------------------------------------------------ theme toggle
-  $("theme-toggle").addEventListener("click", () => {
+  // ------------------------------------------------------------ theme toggle (only if the page has one)
+  if ($("theme-toggle")) $("theme-toggle").addEventListener("click", () => {
     const root = document.documentElement;
     const cur = root.getAttribute("data-theme") ||
       (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");

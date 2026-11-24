@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <title>Edge Functions, webhooks and API guides</title>
 <meta name="description" content="Fixes for Supabase Edge Function 401 and CORS errors, Stripe webhook signature failures, pg_net and pg_cron jobs, rate limiting and CORS credentials.">
 <link rel="canonical" href="https://abhi12337.github.io/checks/guides/edge-functions/">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080c">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Local Code Checks">
 <meta property="og:title" content="Edge Functions, webhooks and API guides">
@@ -17,19 +18,21 @@
 <meta name="twitter:title" content="Edge Functions, webhooks and API guides">
 <meta name="twitter:description" content="Fixes for Supabase Edge Function 401 and CORS errors, Stripe webhook signature failures, pg_net and pg_cron jobs, rate limiting and CORS credentials.">
 <link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "CollectionPage", "name": "Edge Functions, webhooks and API guides", "description": "Fixes for Supabase Edge Function 401 and CORS errors, Stripe webhook signature failures, pg_net and pg_cron jobs, rate limiting and CORS credentials.", "url": "https://abhi12337.github.io/checks/guides/edge-functions/", "dateModified": "2026-11-24", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "mainEntity": {"@type": "ItemList", "itemListElement": [{"@type": "ListItem", "position": 1, "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-404-not-found-cors-preflight/", "name": "Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight"}, {"@type": "ListItem", "position": 2, "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-401-invalid-jwt/", "name": "Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”"}, {"@type": "ListItem", "position": 3, "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-cors-header-not-allowed/", "name": "Supabase Edge Function CORS errors from the browser – headers, preflight and error responses"}, {"@type": "ListItem", "position": 4, "url": "https://abhi12337.github.io/checks/guides/supabase-pg-cron-job-not-running/", "name": "Supabase cron (pg_cron) job not running – a checklist with the SQL for each step"}, {"@type": "ListItem", "position": 5, "url": "https://abhi12337.github.io/checks/guides/supabase-database-webhook-pg-net-not-firing/", "name": "Supabase Database Webhooks and pg_net requests that never arrive – how to debug them"}, {"@type": "ListItem", "position": 6, "url": "https://abhi12337.github.io/checks/guides/stripe-webhook-no-signatures-found-matching-expected-signature/", "name": "Stripe “No signatures found matching the expected signature for payload” – raw body and the right secret"}, {"@type": "ListItem", "position": 7, "url": "https://abhi12337.github.io/checks/guides/api-rate-limiting-429-too-many-requests/", "name": "Rate limiting an API route – return 429 Too Many Requests before abuse costs you"}, {"@type": "ListItem", "position": 8, "url": "https://abhi12337.github.io/checks/guides/cors-wildcard-origin-credentials-include/", "name": "CORS “must not be the wildcard '*' when the request's credentials mode is 'include'” – the safe fix"}]}}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Edge Functions, webhooks and APIs", "item": "https://abhi12337.github.io/checks/guides/edge-functions/"}]}</script>
-<script src="../../static/theme.js?v=045fcd4b08"></script>
 </head>
 <body>
+<div class="sky sky-band">
 <header class="site-header">
   <div class="wrap bar">
-    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
-    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+    <a class="brand" href="../../">Abheesht Tripathi</a>
+    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
   </div>
 </header>
-<main class="wrap">
+</div>
+<main class="wrap reading">
 <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / Edge Functions, webhooks and APIs</nav>
 <h1>Edge Functions, webhooks and API guides</h1>
 <p class="lede">The server side of an app: Edge Functions, CORS, incoming webhooks, database webhooks, scheduled jobs and rate limits. What each error means and the fix that holds in production.</p>
@@ -39,7 +42,9 @@
 </main>
 <footer class="site-footer">
   <div class="wrap">
-    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
+    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
+    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
     <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
     <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
     <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>

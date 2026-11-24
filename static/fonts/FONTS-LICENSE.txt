@@ -1,0 +1,5 @@
+Fonts in this folder are self-hosted copies of Google Fonts files, all under the SIL Open Font License 1.1
+(https://openfontlicense.org):
+  instrument-serif*.woff2  Instrument Serif, Copyright 2022 The Instrument Serif Project Authors
+  inter.woff2              Inter, Copyright 2020 The Inter Project Authors
+  jetbrains-mono.woff2     JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 360" preserveAspectRatio="xMidYMax slice">
+<defs>
+<linearGradient id="far" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f2534"/><stop offset="1" stop-color="#0c0f17"/></linearGradient>
+<linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e121b"/><stop offset="1" stop-color="#07080c"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#07080c" stop-opacity="0"/><stop offset=".85" stop-color="#07080c"/></linearGradient>
+</defs>
+<path d="M0 250 L0 190 L70 172 L130 184 L210 140 L260 158 L330 118 L390 150 L450 138 L520 170 L600 150 L660 162 L740 110 L800 136 L860 128 L930 160 L1010 132 L1080 150 L1150 102 L1210 130 L1290 122 L1360 156 L1430 138 L1500 160 L1600 146 L1600 250 Z" fill="url(#far)"/>
+<path d="M0 250 L0 214 L90 196 L150 212 L240 176 L300 200 L380 190 L450 214 L520 198 L560 206 L640 168 L700 192 L780 204 L860 186 L940 210 L1020 182 L1090 200 L1170 160 L1240 194 L1320 188 L1400 212 L1480 194 L1600 206 L1600 250 Z" fill="#06070b"/>
+<rect x="0" y="250" width="1600" height="110" fill="url(#lake)"/>
+<g transform="matrix(1 0 0 -0.55 0 387.5)" opacity=".4"><path d="M0 250 L0 190 L70 172 L130 184 L210 140 L260 158 L330 118 L390 150 L450 138 L520 170 L600 150 L660 162 L740 110 L800 136 L860 128 L930 160 L1010 132 L1080 150 L1150 102 L1210 130 L1290 122 L1360 156 L1430 138 L1500 160 L1600 146 L1600 250 Z" fill="#1a2030"/><path d="M0 250 L0 214 L90 196 L150 212 L240 176 L300 200 L380 190 L450 214 L520 198 L560 206 L640 168 L700 192 L780 204 L860 186 L940 210 L1020 182 L1090 200 L1170 160 L1240 194 L1320 188 L1400 212 L1480 194 L1600 206 L1600 250 Z" fill="#040509"/></g>
+<g stroke="#e9c58c" stroke-linecap="round" opacity=".22"><path d="M700 262 H790" stroke-width="1"/><path d="M820 270 H870" stroke-width=".8"/><path d="M610 276 H650" stroke-width=".7"/><path d="M930 284 H990" stroke-width=".7"/></g>
+<rect x="0" y="250" width="1600" height="110" fill="url(#fade)"/>
+</svg>

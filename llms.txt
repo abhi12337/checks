@@ -4,6 +4,10 @@
 
 Each guide quotes the exact error message or risk, explains the cause, gives a step-by-step fix with SQL or code, and says how to verify it. Guide index: https://abhi12337.github.io/checks/guides/
 
+## About the author
+
+- [About Abheesht Tripathi](https://abhi12337.github.io/checks/about/): Abheesht Tripathi is an independent AI and backend engineer in Delhi, India. He fixes Supabase, Postgres, API, webhook and AI security problems in live apps.
+
 ## Guides: Supabase RLS and Storage
 
 Hub page: https://abhi12337.github.io/checks/guides/supabase-rls/

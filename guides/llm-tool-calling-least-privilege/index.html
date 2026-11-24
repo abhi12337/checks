@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <title>LLM tool calling: least privilege for AI agents</title>
 <meta name="description" content="Why giving an LLM agent run_sql or an admin key is excessive agency (OWASP LLM06), and a least-privilege design with per-user auth, schemas and confirmations.">
 <link rel="canonical" href="https://abhi12337.github.io/checks/guides/llm-tool-calling-least-privilege/">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080c">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Local Code Checks">
 <meta property="og:title" content="LLM tool calling: least privilege for AI agents">
@@ -17,22 +18,24 @@
 <meta name="twitter:title" content="LLM tool calling: least privilege for AI agents">
 <meta name="twitter:description" content="Why giving an LLM agent run_sql or an admin key is excessive agency (OWASP LLM06), and a least-privilege design with per-user auth, schemas and confirmations.">
 <link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "LLM tool calls with over-broad permissions – a least-privilege pattern that holds", "description": "Why giving an LLM agent run_sql or an admin key is excessive agency (OWASP LLM06), and a least-privilege design with per-user auth, schemas and confirmations.", "url": "https://abhi12337.github.io/checks/guides/llm-tool-calling-least-privilege/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/llm-tool-calling-least-privilege/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "AI agent and LLM app security", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "AI agent and LLM app security", "item": "https://abhi12337.github.io/checks/guides/ai-security/"}, {"@type": "ListItem", "position": 4, "name": "LLM tool calls with over-broad permissions – a least-privilege pattern that holds", "item": "https://abhi12337.github.io/checks/guides/llm-tool-calling-least-privilege/"}]}</script>
-<script src="../../static/theme.js?v=045fcd4b08"></script>
 </head>
 <body>
+<div class="sky sky-band">
 <header class="site-header">
   <div class="wrap bar">
-    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
-    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+    <a class="brand" href="../../">Abheesht Tripathi</a>
+    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
   </div>
 </header>
-<main class="wrap">
+</div>
+<main class="wrap reading">
 <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../ai-security/">AI agent and LLM app security</a></nav>
 <h1>LLM tool calls with over-broad permissions – a least-privilege pattern that holds</h1>
-<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
 <pre class="error-text"><code>Risk: an agent with run_sql(query) or a service-role client can be talked into reading or changing any user&#x27;s data</code></pre>
 <article class="explainer"><h2>The problem</h2><p>When a model can call tools, every tool is reachable by anyone who can influence the model's input: the user, a document it reads, a web page, another tool's output. OWASP lists this as <strong>LLM06:2025 Excessive Agency</strong>, with three parts: too much functionality (a generic <code>run_sql</code> or <code>http_request</code>), too many permissions (an admin key behind the tool), and too much autonomy (actions taken without a human check).</p><p>The model's arguments are untrusted input, exactly like a form field. “The model would never pass another user's id” is not a control.</p><h2>The pattern</h2><ol><li><strong>Narrow tools.</strong> <code>get_my_orders(status)</code> instead of <code>run_sql(query)</code>. Each tool does one thing the product actually needs.</li><li><strong>Identity comes from the session, never from the arguments.</strong> No tool takes a <code>user_id</code> parameter; the handler uses the authenticated user of the HTTP request.</li><li><strong>The tool runs with the user's rights.</strong> Database calls use the user's JWT so RLS applies, not a secret key that bypasses it.</li><li><strong>Validate arguments with a schema</strong>: enums, max lengths, numeric limits.</li><li><strong>Writes need confirmation.</strong> The tool returns a proposal; the UI shows it; the user approves; then your server executes it.</li><li><strong>Budgets and logs.</strong> Cap tool calls per turn and per user, and log every call with user, tool and arguments.</li></ol><h2>Example: a tool handler for a Supabase app</h2><pre><code>import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
@@ -81,7 +84,9 @@ commit;</code></pre><p>A read-only transaction rejects writes (<code>cannot exec
 </main>
 <footer class="site-footer">
   <div class="wrap">
-    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
+    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
+    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
     <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
     <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
     <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>

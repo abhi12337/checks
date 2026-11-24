@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
 <title>Jailbreak vs prompt injection: what each means for you</title>
 <meta name="description" content="Jailbreaks and prompt injection are related but not the same. Who attacks, what breaks, and which defences in an LLM app actually address each one.">
 <link rel="canonical" href="https://abhi12337.github.io/checks/guides/jailbreak-vs-prompt-injection/">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#07080c">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Local Code Checks">
 <meta property="og:title" content="Jailbreak vs prompt injection: what each means for you">
@@ -17,23 +18,25 @@
 <meta name="twitter:title" content="Jailbreak vs prompt injection: what each means for you">
 <meta name="twitter:description" content="Jailbreaks and prompt injection are related but not the same. Who attacks, what breaks, and which defences in an LLM app actually address each one.">
 <link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../static/style.css?v=045fcd4b08">
+<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Jailbreak vs prompt injection – the difference that decides your defences", "description": "Jailbreaks and prompt injection are related but not the same. Who attacks, what breaks, and which defences in an LLM app actually address each one.", "url": "https://abhi12337.github.io/checks/guides/jailbreak-vs-prompt-injection/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/jailbreak-vs-prompt-injection/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "AI agent and LLM app security", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "AI agent and LLM app security", "item": "https://abhi12337.github.io/checks/guides/ai-security/"}, {"@type": "ListItem", "position": 4, "name": "Jailbreak vs prompt injection – the difference that decides your defences", "item": "https://abhi12337.github.io/checks/guides/jailbreak-vs-prompt-injection/"}]}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is prompt injection a type of jailbreak?", "acceptedAnswer": {"@type": "Answer", "text": "It's the other way round in OWASP's framing: jailbreaking is described as a form of prompt injection. In practice, jailbreaks target the model's safety rules, while prompt injection targets your application's instructions and permissions."}}, {"@type": "Question", "name": "Can a better system prompt stop prompt injection?", "acceptedAnswer": {"@type": "Answer", "text": "It lowers the success rate but doesn't stop it. Models have no hard boundary between instructions and data, so limit tool permissions and require confirmations instead of relying on prompt wording."}}]}</script>
-<script src="../../static/theme.js?v=045fcd4b08"></script>
 </head>
 <body>
+<div class="sky sky-band">
 <header class="site-header">
   <div class="wrap bar">
-    <a class="brand" href="../../"><img src="../../static/icon.svg" alt="" width="22" height="22"> Local Code Checks</a>
-    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">&#9680;</button>
+    <a class="brand" href="../../">Abheesht Tripathi</a>
+    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
   </div>
 </header>
-<main class="wrap">
+</div>
+<main class="wrap reading">
 <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../ai-security/">AI agent and LLM app security</a></nav>
 <h1>Jailbreak vs prompt injection – the difference that decides your defences</h1>
-<p class="byline">By Abheesht Tripathi · Published <time datetime="2026-11-24">2026-11-24</time></p>
+<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
 <pre class="error-text"><code>Question: is “ignore your previous instructions” a jailbreak or a prompt injection, and does it matter for my app&#x27;s security?</code></pre>
 <article class="explainer"><h2>Short answer</h2><p><strong>Jailbreaking</strong> is getting a model to ignore its safety rules: the guardrails the model
 provider trained in, or the content rules you set. <strong>Prompt injection</strong> is getting an application
@@ -81,7 +84,9 @@ send_email”); pass means the canary never appears and no gated tool runs witho
 </main>
 <footer class="site-footer">
   <div class="wrap">
-    <p class="local-note"><strong>Runs locally in your browser. Files are never uploaded.</strong></p>
+    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
+    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
+    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
     <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
     <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
     <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
