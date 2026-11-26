@@ -1,94 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>Supabase Edge Function 401: Invalid JWT / Missing auth</title>
-<meta name="description" content="Why a Supabase Edge Function returns 401 &#x27;Invalid JWT&#x27; or &#x27;Missing authorization header&#x27; before your code runs, and the fix for browsers, webhooks and cron.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-edge-function-401-invalid-jwt/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Supabase Edge Function 401: Invalid JWT / Missing auth">
-<meta property="og:description" content="Why a Supabase Edge Function returns 401 &#x27;Invalid JWT&#x27; or &#x27;Missing authorization header&#x27; before your code runs, and the fix for browsers, webhooks and cron.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-edge-function-401-invalid-jwt/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Supabase Edge Function 401: Invalid JWT / Missing auth">
-<meta name="twitter:description" content="Why a Supabase Edge Function returns 401 &#x27;Invalid JWT&#x27; or &#x27;Missing authorization header&#x27; before your code runs, and the fix for browsers, webhooks and cron.">
-<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”", "description": "Why a Supabase Edge Function returns 401 'Invalid JWT' or 'Missing authorization header' before your code runs, and the fix for browsers, webhooks and cron.", "url": "https://abhi12337.github.io/checks/guides/supabase-edge-function-401-invalid-jwt/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-edge-function-401-invalid-jwt/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Edge Functions, webhooks and APIs", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Edge Functions, webhooks and APIs", "item": "https://abhi12337.github.io/checks/guides/edge-functions/"}, {"@type": "ListItem", "position": 4, "name": "Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”", "item": "https://abhi12337.github.io/checks/guides/supabase-edge-function-401-invalid-jwt/"}]}</script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main class="wrap reading">
-<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../edge-functions/">Edge Functions, webhooks and APIs</a></nav>
-<h1>Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”</h1>
-<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
-<pre class="error-text"><code>401 Unauthorized  ·  Invalid JWT  ·  Missing authorization header
-(newer projects: Invalid Token or Protected Header formatting)</code></pre>
-<article class="explainer"><h2>What it means</h2><p>By default every Edge Function has <code>verify_jwt</code> turned on. The platform checks the <code>Authorization</code> header <em>before</em> your code runs and answers 401 itself if the header is missing, malformed, expired, or signed by a key it doesn't accept. Your function never started, so your logs show nothing and your own error handling never ran.</p><p>Tell the two cases apart by the body: the messages above come from the platform. A 401 with your own message (or an empty body) came from your code.</p><h2>The usual causes</h2><ol><li><strong>No header at all.</strong> A raw <code>fetch</code>, a curl test, or a webhook from Stripe, Razorpay, GitHub or a cron service. Those callers don't have a Supabase user token.</li><li><strong>An expired user token</strong> that your code cached instead of asking supabase-js for the current session.</li><li><strong>A token from another project</strong>: staging token, production function.</li><li><strong>Key format mismatch.</strong> Supabase's 401 troubleshooting guide lists projects on the newer asymmetric JWT signing keys / API keys whose callers send something the legacy check doesn't understand. Its recommended fix is to turn the built-in check off and verify in your code.</li></ol><h2>Fix for browser calls: send the user&#x27;s token</h2><p><code>supabase.functions.invoke()</code> attaches the signed-in user's access token and the <code>apikey</code> header for you:</p><pre><code>const { data, error } = await supabase.functions.invoke('create-checkout', {
-  body: { plan: 'pro' },
-});</code></pre><p>If you use <code>fetch</code>, get the session right before the call. Send API keys on the <code>apikey</code> header and keep <code>Authorization</code> for user tokens:</p><pre><code>const { data: { session } } = await supabase.auth.getSession();
-await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
-  method: 'POST',
-  headers: {
-    Authorization: `Bearer ${session.access_token}`,
-    apikey: SUPABASE_PUBLISHABLE_KEY,
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({ plan: 'pro' }),
-});</code></pre><h2>Fix for webhooks and cron: turn the check off, verify differently</h2><p>A payment webhook can never send a Supabase JWT. Turn <code>verify_jwt</code> off for that function only, and verify the provider's signature in your code instead:</p><pre><code># supabase/config.toml
-[functions.stripe-webhook]
-verify_jwt = false</code></pre><p>or deploy with <code>supabase functions deploy stripe-webhook --no-verify-jwt</code>. The value in <code>config.toml</code> is applied on deploy, so a dashboard toggle can be overwritten by your next deploy: keep the setting in the file.</p><h2>If you turn it off for user-facing functions, check the user yourself</h2><p>With <code>verify_jwt = false</code> nothing checks the caller any more unless your code does. Verify the token with Supabase Auth and use a client that runs as that user:</p><pre><code>import { createClient } from 'npm:@supabase/supabase-js@2';
-
-Deno.serve(async (req) =&gt; {
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const token = authHeader.replace('Bearer ', '');
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-  // queries on `supabase` now run as this user, under RLS
-  return Response.json({ ok: true, user_id: user.id });
-});</code></pre><p>Decoding the JWT without verifying its signature is not a check: anyone can make a token with any <code>sub</code>.</p><h2>How to verify</h2><pre><code># without a token: 401 from the platform (verify_jwt on) or from your code (off)
-curl -i -X POST https://&lt;project-ref&gt;.supabase.co/functions/v1/create-checkout
-
-# with a real user token: your function runs and its logs show the request
-curl -i -X POST https://&lt;project-ref&gt;.supabase.co/functions/v1/create-checkout \
-  -H "Authorization: Bearer &lt;user-access-token&gt;" \
-  -H "apikey: &lt;publishable-key&gt;" \
-  -H "Content-Type: application/json" -d '{"plan":"pro"}'</code></pre><p>For a browser app, also return CORS headers on every response, including the 401 your code returns, or the browser will show a CORS error instead.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-edge-function-cors-header-not-allowed/">Supabase Edge Function CORS errors from the browser – headers, preflight and error responses</a></li><li><a href="../supabase-edge-function-404-not-found-cors-preflight/">Supabase Edge Function returns 404 NOT_FOUND on the CORS preflight</a></li><li><a href="../supabase-jwt-expired/">Supabase “JWT expired” – why the token went stale and how to keep it fresh</a></li><li><a href="../supabase-pg-cron-job-not-running/">Supabase cron (pg_cron) job not running – a checklist with the SQL for each step</a></li></ul><p>More in <a href="../edge-functions/">Edge Functions, webhooks and APIs</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a> (runs in your browser, nothing uploaded).</p></article>
-<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/guides/supabase-edge-function-401-invalid-jwt/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/guides/supabase-edge-function-401-invalid-jwt/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/guides/supabase-edge-function-401-invalid-jwt/">Go to the new page →</a></p>
+</body></html>

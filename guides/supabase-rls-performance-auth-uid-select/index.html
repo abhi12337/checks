@@ -1,87 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>Supabase RLS slow? Wrap auth.uid() in select, add indexes</title>
-<meta name="description" content="Fix the Supabase &#x27;Auth RLS Initialization Plan&#x27; warning and slow RLS queries: (select auth.uid()), indexes on policy columns, roles and fewer policies.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-rls-performance-auth-uid-select/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Supabase RLS slow? Wrap auth.uid() in select, add indexes">
-<meta property="og:description" content="Fix the Supabase &#x27;Auth RLS Initialization Plan&#x27; warning and slow RLS queries: (select auth.uid()), indexes on policy columns, roles and fewer policies.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-rls-performance-auth-uid-select/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Supabase RLS slow? Wrap auth.uid() in select, add indexes">
-<meta name="twitter:description" content="Fix the Supabase &#x27;Auth RLS Initialization Plan&#x27; warning and slow RLS queries: (select auth.uid()), indexes on policy columns, roles and fewer policies.">
-<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Slow Supabase queries with RLS – (select auth.uid()), indexes and the other fixes", "description": "Fix the Supabase 'Auth RLS Initialization Plan' warning and slow RLS queries: (select auth.uid()), indexes on policy columns, roles and fewer policies.", "url": "https://abhi12337.github.io/checks/guides/supabase-rls-performance-auth-uid-select/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-rls-performance-auth-uid-select/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Supabase RLS and Storage", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Supabase RLS and Storage", "item": "https://abhi12337.github.io/checks/guides/supabase-rls/"}, {"@type": "ListItem", "position": 4, "name": "Slow Supabase queries with RLS – (select auth.uid()), indexes and the other fixes", "item": "https://abhi12337.github.io/checks/guides/supabase-rls-performance-auth-uid-select/"}]}</script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main class="wrap reading">
-<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../supabase-rls/">Supabase RLS and Storage</a></nav>
-<h1>Slow Supabase queries with RLS – (select auth.uid()), indexes and the other fixes</h1>
-<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
-<pre class="error-text"><code>Table `public.notes` has a row level security policy `read own notes` that re-evaluates current_setting() or auth.&lt;function&gt;() for each row. This produces suboptimal query performance at scale.</code></pre>
-<article class="explainer"><h2>What it means</h2><p>That warning comes from Supabase's database linter (<code>auth_rls_initplan</code>, in the Performance
-Advisor). An RLS policy is an extra <code>WHERE</code> condition on every query. If it calls
-<code>auth.uid()</code> directly, Postgres may evaluate the function once for every row it looks at. On a table
-with a million rows that is a million function calls for one request, and it is a common reason for slow pages
-and <code>statement timeout</code> errors once data grows.</p><h2>Fix 1: wrap auth functions in a select</h2><p>Writing <code>(select auth.uid())</code> makes Postgres run the function once per statement (an <em>initPlan</em>) and reuse the result. Supabase's docs recommend this for <code>auth.uid()</code>, <code>auth.jwt()</code> and your own security definer functions:</p><pre><code>-- before
-create policy "read own notes" on public.notes
-  for select using (auth.uid() = user_id);
-
--- after
-drop policy "read own notes" on public.notes;
-create policy "read own notes" on public.notes
-  for select to authenticated
-  using ((select auth.uid()) = user_id);</code></pre><p>Only do this when the result doesn't depend on the row. <code>(select auth.uid())</code> is safe; wrapping an expression that uses columns of the row would change its meaning.</p><h2>Fix 2: index every column a policy filters on</h2><pre><code>create index if not exists notes_user_id_idx on public.notes using btree (user_id);</code></pre><p>With the index, <code>user_id = (select auth.uid())</code> becomes an index lookup instead of a scan of the whole table. For a multi-column index, the policy column needs to come first to be used on its own.</p><h2>Fix 3: name the role</h2><p>Add <code>to authenticated</code> (or <code>to anon</code>) to each policy. A policy for another role is skipped without being evaluated, so anonymous requests don't pay for logged-in rules.</p><h2>Fix 4: replace per-row joins with a set lookup</h2><p>Team or organisation policies often look like <code>exists (select 1 from members where members.team_id = docs.team_id and members.user_id = auth.uid())</code>, which runs per row. Turn it around so the membership list is computed once:</p><pre><code>create schema if not exists private;
-
-create or replace function private.my_team_ids()
-returns setof bigint
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select team_id from public.members where user_id = (select auth.uid());
-$$;
-
-create policy "read team docs" on public.docs
-  for select to authenticated
-  using (team_id in (select private.my_team_ids()));</code></pre><p>Keep the function in a schema the API doesn't expose, and index <code>members(user_id)</code> and <code>docs(team_id)</code>.</p><h2>Fix 5: fewer permissive policies, and filter in the query</h2><p>The linter's <em>Multiple Permissive Policies</em> warning means several policies for the same role and action, each run for every relevant query. Merge them into one with <code>or</code>. Also add the obvious filter to your client query, for example <code>.eq('user_id', user.id)</code>: RLS still enforces access, but the planner gets a clear condition to use an index with.</p><h2>How to verify</h2><p>Measure as the API role, before and after:</p><pre><code>begin;
-set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"&lt;user-uuid&gt;","role":"authenticated"}', true);
-explain analyze select * from public.notes;
-rollback;</code></pre><p>After the fix the plan shows an <code>InitPlan</code> for <code>auth.uid()</code> and an index scan, and the execution time drops. The Performance Advisor no longer lists <code>auth_rls_initplan</code> for the table.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-infinite-recursion-detected-in-policy/">Supabase “infinite recursion detected in policy for relation” – cause and fix</a></li><li><a href="../supabase-canceling-statement-due-to-statement-timeout/">Supabase “canceling statement due to statement timeout” (57014) – fix the query, then the limit</a></li><li><a href="../postgres-security-definer-search-path/">SECURITY DEFINER functions without a fixed search_path – the risk and the fix</a></li><li><a href="../supabase-new-row-violates-row-level-security-policy/">Supabase “new row violates row-level security policy” – causes and fix</a></li></ul><p>More in <a href="../supabase-rls/">Supabase RLS and Storage</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
-<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/guides/supabase-rls-performance-auth-uid-select/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/guides/supabase-rls-performance-auth-uid-select/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/guides/supabase-rls-performance-auth-uid-select/">Go to the new page →</a></p>
+</body></html>

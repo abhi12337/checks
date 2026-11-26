@@ -1,107 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/pyodide/v0.27.7/full/ 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://cdn.jsdelivr.net/pyodide/v0.27.7/full/; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<meta name="referrer" content="no-referrer">
-<title>Razorpay Webhook Signature Verification Check</title>
-<meta name="description" content="Check Razorpay webhook handlers for missing X-Razorpay-Signature verification, HMAC over JSON.stringify(req.body) and == comparisons. Runs in your browser.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/razorpay-webhook-signature-verification/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Razorpay Webhook Signature Verification Check">
-<meta property="og:description" content="Check Razorpay webhook handlers for missing X-Razorpay-Signature verification, HMAC over JSON.stringify(req.body) and == comparisons. Runs in your browser.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/razorpay-webhook-signature-verification/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Razorpay Webhook Signature Verification Check">
-<meta name="twitter:description" content="Check Razorpay webhook handlers for missing X-Razorpay-Signature verification, HMAC over JSON.stringify(req.body) and == comparisons. Runs in your browser.">
-<link rel="icon" href="../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Razorpay Webhook Signature Verification Check", "description": "Check Razorpay webhook handlers for missing X-Razorpay-Signature verification, HMAC over JSON.stringify(req.body) and == comparisons. Runs in your browser.", "url": "https://abhi12337.github.io/checks/razorpay-webhook-signature-verification/", "applicationCategory": "DeveloperApplication", "operatingSystem": "Any (runs in a web browser)", "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is this the same as payment signature verification?", "acceptedAnswer": {"@type": "Answer", "text": "No. Webhooks are signed over the raw body with the webhook secret. The Checkout success handler is a different check: see the Razorpay payment signature verification page."}}, {"@type": "Question", "name": "Does it understand Python handlers?", "acceptedAnswer": {"@type": "Answer", "text": "Yes: FastAPI, Flask and Django, including client.utility.verify_webhook_signature."}}, {"@type": "Question", "name": "Are my files uploaded anywhere?", "acceptedAnswer": {"@type": "Answer", "text": "No. The checker is Python running inside your browser tab (Pyodide, WebAssembly). Your files are read with the browser's File API and written into an in-memory file system that exists only in this tab. The page makes no network requests except loading the Python runtime and the checker code. There are no analytics. You can disconnect from the internet after the engine has loaded and the scan still works."}}, {"@type": "Question", "name": "Is a clean report a guarantee?", "acceptedAnswer": {"@type": "Answer", "text": "No. It is a static check for known patterns, not a penetration test. A clean report means none of these patterns were found, nothing more."}}, {"@type": "Question", "name": "Can I run the same check on my machine or in CI?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Every checker on this site is an open-source command-line tool (MIT licence, Python 3.10+ standard library only). The results here are the same as `scan --json` on the command line, except for checks that need git (whether a file is committed or ignored), which cannot run in a browser."}}]}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Razorpay webhook signature verification check", "item": "https://abhi12337.github.io/checks/razorpay-webhook-signature-verification/"}]}</script>
-<script type="application/json" id="page-config">{"tool": "webhook-check", "tools": {"supa-launch-check": {"package": "supa_launch_check", "zip": "tools/supa-launch-check.zip?v=40f21a4b1b", "include_tests": true, "build_option": false}, "firebase-launch-check": {"package": "firebase_launch_check", "zip": "tools/firebase-launch-check.zip?v=a1af3c73ff", "include_tests": true, "build_option": false}, "key-leak-check": {"package": "key_leak_check", "zip": "tools/key-leak-check.zip?v=76673240dd", "include_tests": true, "build_option": true}, "webhook-check": {"package": "webhook_check", "zip": "tools/webhook-check.zip?v=50d066409b", "include_tests": true, "build_option": false}, "route-auth-check": {"package": "route_auth_check", "zip": "tools/route-auth-check.zip?v=0d97c885a8", "include_tests": true, "build_option": false}, "mcp-audit": {"package": "mcp_audit", "zip": "tools/mcp-audit.zip?v=e26544cc18", "include_tests": true, "build_option": false}, "rules-file-audit": {"package": "rules_file_audit", "zip": "tools/rules-file-audit.zip?v=8a72dd5899", "include_tests": false, "build_option": false}, "llm-cost-lint": {"package": "llm_cost_lint", "zip": "tools/llm-cost-lint.zip?v=85738fe582", "include_tests": true, "build_option": false}, "pg-launch-check": {"package": "pg_launch_check", "zip": "tools/pg-launch-check.zip?v=6eb19ce5af", "include_tests": true, "build_option": false}}, "samples": {"webhook-check": {"name": "server/routes/razorpay-webhook.js", "content": "const express = require(\"express\");\nconst crypto = require(\"crypto\");\nconst router = express.Router();\n\nrouter.post(\"/api/webhooks/razorpay\", express.json(), async (req, res) => {\n  const expected = crypto\n    .createHmac(\"sha256\", process.env.RAZORPAY_WEBHOOK_SECRET)\n    .update(JSON.stringify(req.body))\n    .digest(\"hex\");\n\n  if (expected === req.headers[\"x-razorpay-signature\"]) {\n    if (req.body.event === \"payment.captured\") {\n      await markOrderPaid(req.body.payload.payment.entity.order_id);\n    }\n  }\n  res.json({ status: \"ok\" });\n});\n\nmodule.exports = router;\n"}}, "build_default": false, "pyodide": "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/", "maxTotalMB": 25, "maxFiles": 5000, "cta": "<strong>Want it fixed in your app?<\/strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href=\"mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app\">abheeshttripathi890@gmail.com<\/a>", "repo": {"supa-launch-check": "https://github.com/abhi12337/supa-launch-check", "firebase-launch-check": "https://github.com/abhi12337/firebase-launch-check", "key-leak-check": "https://github.com/abhi12337/key-leak-check", "webhook-check": "https://github.com/abhi12337/webhook-check", "route-auth-check": "https://github.com/abhi12337/route-auth-check", "mcp-audit": "https://github.com/abhi12337/mcp-audit", "rules-file-audit": "https://github.com/abhi12337/rules-file-audit", "llm-cost-lint": "https://github.com/abhi12337/llm-cost-lint", "pg-launch-check": "https://github.com/abhi12337/pg-launch-check"}}</script>
-<script src="../static/app.js?v=683bd7e1a8" defer></script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../#tools" aria-current="page">Checks</a></li><li><a href="../guides/">Guides</a></li><li><a href="../about/">About</a></li><li><a href="../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main>
-<div class="wrap page-head"><nav class="crumbs" aria-label="Breadcrumb"><a href="../">All checks</a> / Webhooks &amp; payments</nav><h1>Razorpay webhook signature verification check</h1><p class="lede">Drop your project or paste your Razorpay webhook route to check that <code>X-Razorpay-Signature</code> is verified correctly.</p></div>
-<div class="wrap checker-page">
-  <section class="checker" id="checker" aria-labelledby="checker-h">
-  <div class="checker-head">
-    <h2 id="checker-h">Run the check</h2>
-    
-  </div>
-  <div class="drop" id="drop" tabindex="0" aria-describedby="drop-help">
-    <p class="drop-title">Drop a project folder or files here</p>
-    <p class="muted" id="drop-help">node_modules, .git, virtualenvs and build folders are skipped. Limit 25 MB / 5,000 files.</p>
-    <div class="row">
-      <label class="btn">Choose folder<input class="sr-only" type="file" id="pick-folder" webkitdirectory multiple></label>
-      <label class="btn">Choose files<input class="sr-only" type="file" id="pick-files" multiple></label>
-    </div>
-  </div>
-  <div class="paste">
-    <div class="paste-head">
-      <label for="paste-name">Or paste one file. File name / path:</label>
-      <input id="paste-name" type="text" autocomplete="off" spellcheck="false">
-      <button class="btn small" type="button" id="load-example">Load vulnerable example</button>
-    </div>
-    <textarea id="paste-text" spellcheck="false" autocomplete="off" aria-label="File contents" placeholder="Paste the file contents here"></textarea>
-  </div>
-  <div class="options">
-    <label id="opt-tests-wrap"><input type="checkbox" id="opt-tests"> Include test / fixture files</label>
-    <label id="opt-build-wrap" hidden><input type="checkbox" id="opt-build"> Also scan build output (dist/, build/, out/, .next/static)</label>
-  </div>
-  <div class="selected" id="selected" hidden></div>
-  <div class="run-row">
-    <button class="btn primary" type="button" id="run">Scan locally</button>
-    <span class="status" id="status" role="status">The Python engine (Pyodide, a few MB, cached by your browser) loads when you start.</span>
-  </div>
-  <div class="results" id="results" aria-live="polite" hidden></div>
-</section>
-
-  <article class="explainer">
-  <h2>The mistake</h2><p>A Razorpay webhook handler that never checks <code>X-Razorpay-Signature</code>; computes the HMAC over <code>JSON.stringify(req.body)</code> after <code>express.json()</code> has parsed it; compares the signature with <code>===</code>; or has the webhook secret written into the code.</p>
-  <h2>Why it is dangerous</h2><p>Anyone can POST a forged <code>payment.captured</code> event to a public webhook URL. Razorpay signs the exact bytes it sends; <code>JSON.stringify</code> produces different bytes, so valid events fail at random and the check gets switched off. <code>==</code> / <code>===</code> on strings stops at the first differing byte, so the response time leaks how much of a guessed signature is right. A hard-coded secret lets anyone with the code sign their own events.</p>
-  <h2>How to fix it</h2><p>Compute HMAC-SHA256 of the raw body with the webhook secret, compare it with <code>X-Razorpay-Signature</code> in constant time, and stop the request when it fails:</p><pre><code>// Express: raw body on this route, registered before express.json()
-app.post("/api/webhooks/razorpay", express.raw({ type: "application/json" }), handler)
-
-# Python
-client.utility.verify_webhook_signature(payload.decode(), signature, secret)</code></pre><p>Use <code>crypto.timingSafeEqual</code> / <code>hmac.compare_digest</code>, and keep the secret in an environment variable.</p>
-  <h2>What this checker looks for</h2>
-  <p>This page runs <a href="https://github.com/abhi12337/webhook-check" rel="noopener"><code>webhook-check</code></a>, which reads
-  route handlers in Next.js, Express, Fastify, Hono, FastAPI, Flask and Django. The rules most relevant to this page:</p>
-  <table class="rules"><thead><tr><th>Rule</th><th>What it finds</th></tr></thead><tbody><tr><td><code>WHK001</code></td><td>Webhook handler does not verify the signature</td></tr><tr><td><code>WHK002</code></td><td>Signature checked against parsed / re-serialized JSON</td></tr><tr><td><code>WHK003</code></td><td>Signature compared with == instead of a constant-time comparison</td></tr><tr><td><code>WHK004</code></td><td>Hard-coded webhook signing secret</td></tr><tr><td><code>WHK005</code></td><td>Signature verification failure is ignored</td></tr><tr><td><code>WHK007</code></td><td>Webhook events are not de-duplicated</td></tr></tbody></table>
-  <p class="muted">Every finding has a rule id, a severity, <code>file:line</code>, the offending line (secrets masked),
-  why it matters and how to fix it. Run <code>webhook-check rules</code> for the full list.</p>
-</article>
-  <section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">FAQ</h2><details><summary>Is this the same as payment signature verification?</summary><p>No. Webhooks are signed over the raw body with the webhook secret. The Checkout success handler is a different check: see the Razorpay payment signature verification page.</p></details><details><summary>Does it understand Python handlers?</summary><p>Yes: FastAPI, Flask and Django, including client.utility.verify_webhook_signature.</p></details><details><summary>Are my files uploaded anywhere?</summary><p>No. The checker is Python running inside your browser tab (Pyodide, WebAssembly). Your files are read with the browser&#x27;s File API and written into an in-memory file system that exists only in this tab. The page makes no network requests except loading the Python runtime and the checker code. There are no analytics. You can disconnect from the internet after the engine has loaded and the scan still works.</p></details><details><summary>Is a clean report a guarantee?</summary><p>No. It is a static check for known patterns, not a penetration test. A clean report means none of these patterns were found, nothing more.</p></details><details><summary>Can I run the same check on my machine or in CI?</summary><p>Yes. Every checker on this site is an open-source command-line tool (MIT licence, Python 3.10+ standard library only). The results here are the same as `scan --json` on the command line, except for checks that need git (whether a file is committed or ignored), which cannot run in a browser.</p></details></section>
-</div>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../about/">About</a></li><li><a href="../guides/">Guides</a></li><li><a href="../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/razorpay-webhook-signature-verification/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/razorpay-webhook-signature-verification/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/razorpay-webhook-signature-verification/">Go to the new page →</a></p>
+</body></html>

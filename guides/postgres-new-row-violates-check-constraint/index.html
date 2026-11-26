@@ -1,71 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>Postgres: new row violates check constraint (23514) – fix</title>
-<meta name="description" content="What &#x27;new row for relation violates check constraint&#x27; (23514) means, how to see the rule that failed, and how to change a CHECK constraint safely.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/guides/postgres-new-row-violates-check-constraint/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Postgres: new row violates check constraint (23514) – fix">
-<meta property="og:description" content="What &#x27;new row for relation violates check constraint&#x27; (23514) means, how to see the rule that failed, and how to change a CHECK constraint safely.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/guides/postgres-new-row-violates-check-constraint/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Postgres: new row violates check constraint (23514) – fix">
-<meta name="twitter:description" content="What &#x27;new row for relation violates check constraint&#x27; (23514) means, how to see the rule that failed, and how to change a CHECK constraint safely.">
-<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Postgres “new row for relation … violates check constraint” – find the rule and fix it", "description": "What 'new row for relation violates check constraint' (23514) means, how to see the rule that failed, and how to change a CHECK constraint safely.", "url": "https://abhi12337.github.io/checks/guides/postgres-new-row-violates-check-constraint/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/postgres-new-row-violates-check-constraint/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Postgres errors and performance", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Postgres errors and performance", "item": "https://abhi12337.github.io/checks/guides/postgres-errors/"}, {"@type": "ListItem", "position": 4, "name": "Postgres “new row for relation … violates check constraint” – find the rule and fix it", "item": "https://abhi12337.github.io/checks/guides/postgres-new-row-violates-check-constraint/"}]}</script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main class="wrap reading">
-<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../postgres-errors/">Postgres errors and performance</a></nav>
-<h1>Postgres “new row for relation … violates check constraint” – find the rule and fix it</h1>
-<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
-<pre class="error-text"><code>new row for relation &quot;orders&quot; violates check constraint &quot;orders_status_check&quot;  (code 23514)</code></pre>
-<article class="explainer"><h2>What it means</h2><p>A <code>CHECK</code> constraint is a rule on the table, such as “quantity must be positive” or “status must be one of these values”. Your insert or update produced a row for which the rule is false, so Postgres rejected the whole statement. The <code>DETAIL</code> line (<code>Failing row contains (...)</code>) shows the full row as Postgres saw it, after defaults and triggers ran. Through the Supabase API it arrives as HTTP 400 with <code>code: "23514"</code>.</p><h2>Step 1: read the rule that failed</h2><p>The constraint name is in the message. Print its definition:</p><pre><code>select conname, pg_get_constraintdef(oid)
-from pg_constraint
-where conrelid = 'public.orders'::regclass
-  and contype = 'c';</code></pre><p>Compare it with the <code>Failing row contains</code> values. The mismatch is usually obvious once both are side by side.</p><h2>The usual causes</h2><ol><li><strong>Case or spelling.</strong> The rule allows <code>'pending'</code>, the app sends <code>'Pending'</code> or <code>'in_progress'</code> when the rule says <code>'in-progress'</code>.</li><li><strong>A new value in the app, old rule in the database.</strong> The UI added a status, the migration that widens the rule was never run on this project.</li><li><strong>Empty string instead of null.</strong> A form sends <code>''</code> and the rule is <code>char_length(name) &gt; 0</code>. Note the reverse: a CHECK passes when the expression is <em>null</em>, so <code>null</code> slips through unless the column is also <code>not null</code>.</li><li><strong>Numbers out of range</strong>, such as a discount of 120 when the rule is <code>between 0 and 100</code>, or a negative quantity from a “minus” button.</li><li><strong>A trigger or default</strong> changed the row before the check ran. That is why the failing row can contain values you never sent.</li></ol><h2>Fix the data or widen the rule</h2><p>If the app is wrong, normalise the value before saving (for example lower-case it). If the rule is out of date, replace it. Adding it as <code>not valid</code> first avoids a long table scan under a heavy lock, then <code>validate</code> checks the existing rows separately:</p><pre><code>alter table public.orders drop constraint orders_status_check;
-
-alter table public.orders
-  add constraint orders_status_check
-  check (status in ('pending', 'paid', 'shipped', 'cancelled')) not valid;
-
-alter table public.orders validate constraint orders_status_check;</code></pre><p>If <code>validate</code> fails with <code>check constraint "orders_status_check" of relation "orders" is violated by some row</code>, find the offenders, fix them, and validate again:</p><pre><code>select id, status
-from public.orders
-where not (status in ('pending', 'paid', 'shipped', 'cancelled'));</code></pre><h2>Handle it in the app</h2><p>A check violation is a user-facing validation error, not a crash. Map it to a message:</p><pre><code>const { error } = await supabase.from('orders').insert(order);
-if (error?.code === '23514') {
-  showError('Some values are not allowed. Please check the form.');
-}</code></pre><p>Better still, validate the same rule in the form so users rarely reach the database error. Keep the CHECK anyway: it is the rule that holds when a script, an admin or a bug bypasses the form.</p><h2>How to verify</h2><p>Repeat the exact insert that failed: it should succeed. Then try a value the rule should reject and confirm you still get 23514. A constraint that accepts everything is not protecting anything.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-upsert-duplicate-key-violates-unique-constraint/">Supabase “duplicate key value violates unique constraint” on upsert – the five causes</a></li><li><a href="../postgres-relation-does-not-exist/">“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache</a></li><li><a href="../supabase-rpc-could-not-find-function-schema-cache/">Supabase rpc “Could not find the function … in the schema cache” and “function does not exist”</a></li><li><a href="../postgres-security-definer-search-path/">SECURITY DEFINER functions without a fixed search_path – the risk and the fix</a></li></ul><p>More in <a href="../postgres-errors/">Postgres errors and performance</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a> (runs in your browser, nothing uploaded).</p></article>
-<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/guides/postgres-new-row-violates-check-constraint/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/guides/postgres-new-row-violates-check-constraint/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/guides/postgres-new-row-violates-check-constraint/">Go to the new page →</a></p>
+</body></html>

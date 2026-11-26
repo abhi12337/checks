@@ -1,79 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>Supabase: JWT expired (PGRST303 / PGRST301) – fix</title>
-<meta name="description" content="Why Supabase API calls fail with &#x27;JWT expired&#x27; (401), where stale access tokens come from in browser, server and mobile code, and how supabase-js refreshes.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-jwt-expired/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Supabase: JWT expired (PGRST303 / PGRST301) – fix">
-<meta property="og:description" content="Why Supabase API calls fail with &#x27;JWT expired&#x27; (401), where stale access tokens come from in browser, server and mobile code, and how supabase-js refreshes.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-jwt-expired/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Supabase: JWT expired (PGRST303 / PGRST301) – fix">
-<meta name="twitter:description" content="Why Supabase API calls fail with &#x27;JWT expired&#x27; (401), where stale access tokens come from in browser, server and mobile code, and how supabase-js refreshes.">
-<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “JWT expired” – why the token went stale and how to keep it fresh", "description": "Why Supabase API calls fail with 'JWT expired' (401), where stale access tokens come from in browser, server and mobile code, and how supabase-js refreshes.", "url": "https://abhi12337.github.io/checks/guides/supabase-jwt-expired/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-jwt-expired/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Auth, JWT and secrets", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Auth, JWT and secrets", "item": "https://abhi12337.github.io/checks/guides/auth-jwt/"}, {"@type": "ListItem", "position": 4, "name": "Supabase “JWT expired” – why the token went stale and how to keep it fresh", "item": "https://abhi12337.github.io/checks/guides/supabase-jwt-expired/"}]}</script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main class="wrap reading">
-<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../auth-jwt/">Auth, JWT and secrets</a></nav>
-<h1>Supabase “JWT expired” – why the token went stale and how to keep it fresh</h1>
-<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
-<pre class="error-text"><code>{&quot;code&quot;:&quot;PGRST303&quot;,&quot;message&quot;:&quot;JWT expired&quot;}  (HTTP 401; PGRST301 on older PostgREST versions)</code></pre>
-<article class="explainer"><h2>What it means</h2><p>Every request carries the user's access token (a JWT) in the <code>Authorization</code> header. The token has an <code>exp</code> claim, and Supabase access tokens are short-lived on purpose (one hour by default). The session also holds a refresh token, which supabase-js uses to get a new access token before the old one runs out.</p><p>So “JWT expired” almost always means your code sent an old token <em>itself</em> instead of letting the client library refresh it. PostgREST v13 and later report it as <code>PGRST303</code>; older versions used <code>PGRST301</code> with the same message.</p><h2>Where stale tokens come from</h2><ol><li><strong>A copied token.</strong> <code>session.access_token</code> was saved in React state, localStorage or a custom header once, and reused hours later.</li><li><strong>Server-side rendering without refresh.</strong> The server reads the session from a cookie, but nothing rotates it. With <code>@supabase/ssr</code>, your middleware must call an auth method such as <code>supabase.auth.getUser()</code> on each request so expired cookies get refreshed and written back.</li><li><strong>Mobile apps and sleeping tabs.</strong> Timers pause in the background, so the automatic refresh never fires and the first request after waking uses an expired token.</li><li><strong>Background jobs that stored a user token.</strong> Server jobs should use the secret key (or re-authenticate), not a user's access token captured earlier.</li><li><strong>A wrong device clock</strong>, which can also show up as “JWT issued at future”.</li></ol><h2>The fix in browser code</h2><p>Let supabase-js attach the token. When you call your own API, ask for the session right before the call; <code>getSession()</code> refreshes it if it has expired:</p><pre><code>// Supabase queries: the client attaches and refreshes the token for you
-const { data, error } = await supabase.from('notes').select('*');
-
-// Your own API: fetch the session right before the request, never cache the token
-const { data: { session } } = await supabase.auth.getSession();
-await fetch('/api/report', {
-  headers: { Authorization: `Bearer ${session?.access_token}` },
-});</code></pre><h2>The fix in React Native</h2><p>Start and stop the refresh timer with the app state, as in Supabase's React Native guide:</p><pre><code>import { AppState } from 'react-native';
-
-AppState.addEventListener('change', (state) =&gt; {
-  if (state === 'active') supabase.auth.startAutoRefresh();
-  else supabase.auth.stopAutoRefresh();
-});</code></pre><h2>A safe retry for long-lived screens</h2><pre><code>async function withFreshToken(run) {
-  let res = await run();
-  if (res.error &amp;&amp; ['PGRST303', 'PGRST301'].includes(res.error.code)) {
-    await supabase.auth.refreshSession();
-    res = await run();
-  }
-  return res;
-}
-
-const { data, error } = await withFreshToken(() =&gt; supabase.from('notes').select('*'));</code></pre><p>Retry once only. If the refresh itself fails, the refresh token is gone or revoked: sign the user out and send them to the login screen.</p><h2>How to verify</h2><p>Decode the token you are actually sending (from the browser's Network tab) and look at <code>exp</code>:</p><pre><code>const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-console.log('expires', new Date(payload.exp * 1000), 'now', new Date());</code></pre><p>If the expiry is in the past at the moment of the request, find where that token was stored and replace it with a fresh <code>getSession()</code> call.</p><h2>What not to do</h2><p>Don't raise the access token lifetime to days to make the error go away. A leaked token then stays valid for days, and signing a user out doesn't revoke tokens already issued.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../supabase-edge-function-401-invalid-jwt/">Supabase Edge Function 401 “Invalid JWT” or “Missing authorization header”</a></li><li><a href="../supabase-auth-uid-null-sql-editor/">Supabase auth.uid() returns null – where it works, where it can&#x27;t, and how to test policies</a></li><li><a href="../supabase-service-role-key-exposed/">Supabase service_role or secret key exposed in frontend code – detect, rotate, fix</a></li><li><a href="../supabase-delete-user-violates-foreign-key-constraint/">Supabase “Database error deleting user” – the foreign key on auth.users</a></li></ul><p>More in <a href="../auth-jwt/">Auth, JWT and secrets</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a> (runs in your browser, nothing uploaded).</p></article>
-<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/guides/supabase-jwt-expired/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/guides/supabase-jwt-expired/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/guides/supabase-jwt-expired/">Go to the new page →</a></p>
+</body></html>

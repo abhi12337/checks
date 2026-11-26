@@ -1,98 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>Supabase: Database error saving new user (fix)</title>
-<meta name="description" content="Why Supabase sign-up fails with &#x27;Database error saving new user&#x27; (500): a broken handle_new_user trigger, search_path or a constraint. Find it and fix it.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-database-error-saving-new-user/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Supabase: Database error saving new user (fix)">
-<meta property="og:description" content="Why Supabase sign-up fails with &#x27;Database error saving new user&#x27; (500): a broken handle_new_user trigger, search_path or a constraint. Find it and fix it.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-database-error-saving-new-user/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Supabase: Database error saving new user (fix)">
-<meta name="twitter:description" content="Why Supabase sign-up fails with &#x27;Database error saving new user&#x27; (500): a broken handle_new_user trigger, search_path or a constraint. Find it and fix it.">
-<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “Database error saving new user” – find the failing trigger and fix it", "description": "Why Supabase sign-up fails with 'Database error saving new user' (500): a broken handle_new_user trigger, search_path or a constraint. Find it and fix it.", "url": "https://abhi12337.github.io/checks/guides/supabase-database-error-saving-new-user/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-database-error-saving-new-user/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Auth, JWT and secrets", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Auth, JWT and secrets", "item": "https://abhi12337.github.io/checks/guides/auth-jwt/"}, {"@type": "ListItem", "position": 4, "name": "Supabase “Database error saving new user” – find the failing trigger and fix it", "item": "https://abhi12337.github.io/checks/guides/supabase-database-error-saving-new-user/"}]}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Can I make the profile insert optional so sign-up never fails?", "acceptedAnswer": {"@type": "Answer", "text": "Yes: wrap the insert in a BEGIN ... EXCEPTION WHEN others THEN ... END block inside the function and log the error. Sign-up then succeeds even if the profile insert fails, so you also need a way to create missing profiles later."}}]}</script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main class="wrap reading">
-<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../auth-jwt/">Auth, JWT and secrets</a></nav>
-<h1>Supabase “Database error saving new user” – find the failing trigger and fix it</h1>
-<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
-<pre class="error-text"><code>AuthApiError: Database error saving new user   (HTTP 500, code: unexpected_failure)</code></pre>
-<article class="explainer"><h2>What it means</h2><p>Supabase Auth inserted a row into <code>auth.users</code> and the database rejected it. Auth has no
-idea why your schema said no, so it returns this generic message. In almost every project the real error comes
-from a trigger on <code>auth.users</code>, usually the <code>handle_new_user()</code> function that creates a
-row in <code>public.profiles</code>. Because the trigger runs in the same transaction, its failure rolls back
-the sign-up.</p><h2>Step 1: read the real error</h2><p>Open the <strong>Auth logs</strong> in the dashboard, then the <strong>Postgres logs</strong> around the same
-time. The Postgres line names the problem and the function. Typical lines:</p><pre><code>relation "profiles" does not exist (SQLSTATE 42P01)
-  -- context: PL/pgSQL function public.handle_new_user()
-null value in column "username" of relation "profiles" violates not-null constraint (SQLSTATE 23502)
-duplicate key value violates unique constraint "profiles_username_key" (SQLSTATE 23505)
-permission denied for table profiles (SQLSTATE 42501)</code></pre><h2>What each one means</h2><ul>
-<li><strong>relation does not exist</strong>: the function uses <code>set search_path = ''</code> (good) but
-writes to <code>profiles</code> instead of <code>public.profiles</code>, or the table really is missing in this
-project.</li>
-<li><strong>not-null violation</strong>: a profile column is required, but the value comes from
-<code>raw_user_meta_data</code> and this sign-up (often OAuth, or a dashboard invite) didn't send it.</li>
-<li><strong>duplicate key</strong>: a unique column such as <code>username</code> is filled from metadata
-and two users chose the same value.</li>
-<li><strong>permission denied</strong>: the function is not <code>security definer</code>, so it runs with
-the Auth service's own role, which has no rights on your tables.</li>
-</ul><h2>Step 2: a trigger that does not break sign-up</h2><p>This follows Supabase's recommended shape: <code>security definer</code>, an empty search path, fully qualified names, and defaults for anything that might be missing:</p><pre><code>create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  insert into public.profiles (id, full_name, avatar_url)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data -&gt;&gt; 'full_name', new.raw_user_meta_data -&gt;&gt; 'name', ''),
-    new.raw_user_meta_data -&gt;&gt; 'avatar_url'
-  )
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();</code></pre><p>Don't make profile columns <code>not null</code> or <code>unique</code> unless every sign-up path really provides a value. Collect a username after sign-up instead, and enforce uniqueness there with a friendly error.</p><h2>Step 3: lock the function down</h2><p>A <code>security definer</code> function in <code>public</code> can be called through the API unless you revoke it. It's only meant for the trigger:</p><pre><code>revoke execute on function public.handle_new_user() from public, anon, authenticated;</code></pre><h2>Other places this message comes from</h2><p>Supabase lists the same family of errors for creating, updating and deleting users from the dashboard: <code>Database error creating new user</code>, <code>Database error updating user</code> and <code>Database error deleting user</code>. Triggers that fire on update (for example on <code>last_sign_in_at</code>) and foreign keys that block deletes are the usual causes. Tools that manage the whole database schema, such as some ORMs, can also change permissions on <code>auth.users</code>.</p><h2>How to verify</h2><p>Sign up with email and password, then with each OAuth provider you use. Each sign-up succeeds, and <code>select * from public.profiles order by id desc limit 5;</code> shows a row per user. The Postgres logs show no errors from <code>handle_new_user</code>.</p><section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">FAQ</h2><details><summary>Can I make the profile insert optional so sign-up never fails?</summary><p>Yes: wrap the insert in a BEGIN ... EXCEPTION WHEN others THEN ... END block inside the function and log the error. Sign-up then succeeds even if the profile insert fails, so you also need a way to create missing profiles later.</p></details></section><h2>Related guides</h2><ul class="page-list"><li><a href="../postgres-security-definer-search-path/">SECURITY DEFINER functions without a fixed search_path – the risk and the fix</a></li><li><a href="../postgres-relation-does-not-exist/">“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache</a></li><li><a href="../supabase-delete-user-violates-foreign-key-constraint/">Supabase “Database error deleting user” – the foreign key on auth.users</a></li><li><a href="../supabase-jwt-expired/">Supabase “JWT expired” – why the token went stale and how to keep it fresh</a></li></ul><p>More in <a href="../auth-jwt/">Auth, JWT and secrets</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../supabase-rls-checker/">Supabase RLS checker</a> (runs in your browser, nothing uploaded).</p></article>
-<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/guides/supabase-database-error-saving-new-user/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/guides/supabase-database-error-saving-new-user/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/guides/supabase-database-error-saving-new-user/">Go to the new page →</a></p>
+</body></html>

@@ -1,79 +1,11 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>Supabase: too many connections / Max client connections</title>
-<meta name="description" content="Fix &#x27;remaining connection slots are reserved&#x27;, &#x27;too many clients already&#x27; and Supavisor &#x27;Max client connections reached&#x27; on Supabase: pooler modes, pool sizes.">
-<link rel="canonical" href="https://abhi12337.github.io/checks/guides/supabase-too-many-connections-supavisor/">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#07080c">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="Local Code Checks">
-<meta property="og:title" content="Supabase: too many connections / Max client connections">
-<meta property="og:description" content="Fix &#x27;remaining connection slots are reserved&#x27;, &#x27;too many clients already&#x27; and Supavisor &#x27;Max client connections reached&#x27; on Supabase: pooler modes, pool sizes.">
-<meta property="og:url" content="https://abhi12337.github.io/checks/guides/supabase-too-many-connections-supavisor/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Supabase: too many connections / Max client connections">
-<meta name="twitter:description" content="Fix &#x27;remaining connection slots are reserved&#x27;, &#x27;too many clients already&#x27; and Supavisor &#x27;Max client connections reached&#x27; on Supabase: pooler modes, pool sizes.">
-<link rel="icon" href="../../static/icon.svg" type="image/svg+xml">
-<link rel="preload" href="../../static/fonts/inter.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="../../static/fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../../static/style.css?v=683bd7e1a8">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Supabase “too many connections” – Postgres slots, Supavisor limits and serverless pools", "description": "Fix 'remaining connection slots are reserved', 'too many clients already' and Supavisor 'Max client connections reached' on Supabase: pooler modes, pool sizes.", "url": "https://abhi12337.github.io/checks/guides/supabase-too-many-connections-supavisor/", "mainEntityOfPage": "https://abhi12337.github.io/checks/guides/supabase-too-many-connections-supavisor/", "datePublished": "2026-11-24", "dateModified": "2026-11-24", "inLanguage": "en", "articleSection": "Postgres errors and performance", "author": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}, "publisher": {"@type": "Person", "name": "Abheesht Tripathi", "url": "https://github.com/abhi12337"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Local Code Checks", "item": "https://abhi12337.github.io/checks/"}, {"@type": "ListItem", "position": 2, "name": "Guides", "item": "https://abhi12337.github.io/checks/guides/"}, {"@type": "ListItem", "position": 3, "name": "Postgres errors and performance", "item": "https://abhi12337.github.io/checks/guides/postgres-errors/"}, {"@type": "ListItem", "position": 4, "name": "Supabase “too many connections” – Postgres slots, Supavisor limits and serverless pools", "item": "https://abhi12337.github.io/checks/guides/supabase-too-many-connections-supavisor/"}]}</script>
-</head>
-<body>
-<div class="sky sky-band">
-<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="../../">Abheesht Tripathi</a>
-    <nav aria-label="Main"><ul class="nav"><li><a href="../../#tools">Checks</a></li><li><a href="../../guides/" aria-current="page">Guides</a></li><li><a href="../../about/">About</a></li><li><a href="../../#contact">Contact</a></li></ul></nav>
-  </div>
-</header>
-</div>
-<main class="wrap reading">
-<nav class="crumbs" aria-label="Breadcrumb"><a href="../../">All checks</a> / <a href="../">Guides</a> / <a href="../postgres-errors/">Postgres errors and performance</a></nav>
-<h1>Supabase “too many connections” – Postgres slots, Supavisor limits and serverless pools</h1>
-<p class="byline">By <a href="../../about/">Abheesht Tripathi</a> · Published <time datetime="2026-11-24">2026-11-24</time></p>
-<pre class="error-text"><code>FATAL: remaining connection slots are reserved for non-replication superuser connections
-FATAL: sorry, too many clients already  (code 53300)
-Max client connections reached  (Supavisor)</code></pre>
-<article class="explainer"><h2>Two different limits</h2><p><strong>Postgres</strong> has a fixed number of connection slots, set by your compute size. When they are used up you get <code>remaining connection slots are reserved …</code> (Postgres 16 and later word it <code>… reserved for roles with the SUPERUSER attribute</code>) or <code>sorry, too many clients already</code>.</p><p><strong>Supavisor</strong>, Supabase's connection pooler, also has a client limit per compute size. Exceeding it gives <code>Max client connections reached</code>. Both usually have the same root cause: many app instances, each opening its own pool.</p><p>Note: supabase-js does not open database connections. It talks HTTP to the Data API, which has its own small pool. This problem comes from ORMs and drivers (Prisma, Drizzle, node-postgres, postgres.js, SQLAlchemy) connecting directly.</p><h2>Step 1: see who holds the connections</h2><pre><code>select usename, application_name, client_addr, state, count(*)
-from pg_stat_activity
-group by 1, 2, 3, 4
-order by 5 desc;
-
-show max_connections;</code></pre><p>Lots of <code>idle</code> connections from one app means pools that are too big or never closed. Supavisor errors show up in the dashboard's Pooler logs.</p><h2>Step 2: use the right connection string</h2><p>From Supabase's connection guide:</p><ul><li><strong>Transaction mode, port 6543</strong>: for serverless and edge runtimes (Vercel, Netlify, AWS Lambda, Cloudflare Workers) that open many short-lived connections.</li><li><strong>Session mode, port 5432 on the pooler host</strong>: for long-running servers on an IPv4-only network.</li><li><strong>Direct connection</strong> (<code>db.&lt;ref&gt;.supabase.co:5432</code>): long-running servers and migrations. IPv6 unless you have the IPv4 add-on.</li></ul><pre><code>postgresql://postgres.&lt;project-ref&gt;:&lt;password&gt;@&lt;pooler-host&gt;:6543/postgres</code></pre><p>Copy the pooler host from the Connect dialog; it can't be guessed from the region.</p><h2>Step 3: turn off prepared statements in transaction mode</h2><p>The shared pooler doesn't support prepared statements in transaction mode. Turn them off in your driver:</p><pre><code>// postgres.js / Drizzle
-const sql = postgres(process.env.DATABASE_URL, { prepare: false });
-
-# Prisma: pooled URL for the app, direct URL for migrations
-DATABASE_URL="postgresql://postgres.&lt;ref&gt;:&lt;password&gt;@&lt;pooler-host&gt;:6543/postgres?pgbouncer=true&amp;connection_limit=1"
-DIRECT_URL="postgresql://postgres.&lt;ref&gt;:&lt;password&gt;@&lt;pooler-host&gt;:5432/postgres"</code></pre><h2>Step 4: keep each pool small</h2><ul><li>In serverless functions, a pool of 1 to a few connections per instance. Fifty instances times a default pool of ten is five hundred connections.</li><li>Create the client once per process, outside the request handler. In Next.js development, keep it on <code>globalThis</code> so hot reload doesn't create a new pool on every save.</li><li>Set an idle timeout so unused connections are closed.</li></ul><pre><code>// node-postgres, created once at module level
-import pg from 'pg';
-export const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 3,
-  idleTimeoutMillis: 10_000,
-});</code></pre><h2>Emergency: free slots now</h2><pre><code>select pg_terminate_backend(pid)
-from pg_stat_activity
-where state = 'idle'
-  and state_change &lt; now() - interval '10 minutes'
-  and pid &lt;&gt; pg_backend_pid();</code></pre><p>This only buys time. If the connection count climbs back, the pools are still too large. Upgrade compute only after pooling is right; otherwise the bigger limit fills up the same way.</p><h2>How to verify</h2><p>Rerun the <code>pg_stat_activity</code> query under normal load and during a traffic spike. The total should stay well below <code>max_connections</code>, and the app's connections should come through the pooler, not as hundreds of direct idle sessions.</p><h2>Related guides</h2><ul class="page-list"><li><a href="../postgres-relation-does-not-exist/">“relation does not exist” in Postgres and Supabase – schema, quotes, search_path, cache</a></li><li><a href="../supabase-realtime-not-receiving-changes/">Supabase Realtime subscribed but no postgres_changes events – the checklist</a></li><li><a href="../postgres-new-row-violates-check-constraint/">Postgres “new row for relation … violates check constraint” – find the rule and fix it</a></li><li><a href="../supabase-rpc-could-not-find-function-schema-cache/">Supabase rpc “Could not find the function … in the schema cache” and “function does not exist”</a></li></ul><p>More in <a href="../postgres-errors/">Postgres errors and performance</a> · <a href="../">all guides</a></p><p class="related">Check your own project for this: <a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a> (runs in your browser, nothing uploaded).</p></article>
-<aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <div class="foot-brand"><a class="brand" href="../../">Abheesht Tripathi</a><span class="small">Independent AI &amp; Backend Engineer · Delhi, India</span></div>
-    <ul class="foot-links"><li><a href="../../about/">About</a></li><li><a href="../../guides/">Guides</a></li><li><a href="../../#tools">Checks</a></li><li><a href="https://github.com/abhi12337" rel="me noopener">GitHub</a></li><li><a href="https://x.com/AbheeshtTr10795" rel="me noopener">X</a></li></ul>
-    <p class="local-note"><strong>The checkers run locally in your browser. Files are never uploaded.</strong></p>
-    <aside class="cta"><strong>Want it fixed in your app?</strong> I fix these in your code at a fixed price, reply within 24 h. Start with a Quick Review: top 5 problems with exact fixes in 48 hours, $149 / ₹9,999, paid upfront. Email <a href="mailto:abheeshttripathi890@gmail.com?subject=Fix%20my%20app">abheeshttripathi890@gmail.com</a></aside>
-    <nav aria-label="All checks"><h2>All checks</h2><ul class="page-list"><li><a href="../../supabase-rls-checker/">Supabase RLS checker</a></li><li><a href="../../firestore-rules-checker/">Firestore security rules checker</a></li><li><a href="../../firebase-database-public-check/">Firebase Realtime Database public access check</a></li><li><a href="../../exposed-api-key-checker/">Exposed API key checker for NEXT_PUBLIC_ and VITE_ variables</a></li><li><a href="../../openai-key-exposed-in-frontend/">Is your OpenAI API key exposed in the frontend?</a></li><li><a href="../../stripe-webhook-signature-check/">Stripe webhook signature verification check</a></li><li><a href="../../razorpay-webhook-signature-verification/">Razorpay webhook signature verification check</a></li><li><a href="../../razorpay-payment-signature-verification/">Razorpay payment signature verification check</a></li><li><a href="../../idor-checker-nextjs/">IDOR checker for Next.js API routes</a></li><li><a href="../../server-actions-auth-check/">Next.js Server Actions authentication check</a></li><li><a href="../../mcp-server-security-scanner/">MCP server security scanner</a></li><li><a href="../../mcp-json-config-checker/">mcp.json config checker</a></li><li><a href="../../cursorrules-hidden-unicode-checker/">.cursorrules hidden Unicode checker</a></li><li><a href="../../claude-md-security-check/">CLAUDE.md and agent settings security check</a></li><li><a href="../../llm-api-cost-checker/">LLM API cost checker</a></li><li><a href="../../postgres-migration-lock-checker/">Postgres migration lock checker</a></li><li><a href="../../postgres-missing-foreign-key-index/">Postgres missing foreign key index checker</a></li></ul></nav>
-    <nav aria-label="Guides"><h2><a href="../../guides/">Error and security guides</a></h2><ul class="hub-links"><li><a href="../../guides/supabase-rls/">Supabase RLS and Storage</a></li><li><a href="../../guides/auth-jwt/">Auth, JWT and secrets</a></li><li><a href="../../guides/edge-functions/">Edge Functions, webhooks and APIs</a></li><li><a href="../../guides/postgres-errors/">Postgres errors and performance</a></li><li><a href="../../guides/ai-security/">AI agent and LLM app security</a></li></ul></nav>
-    <p class="repos">Open source (MIT) on GitHub: <a href="https://github.com/abhi12337/supa-launch-check" rel="noopener">supa-launch-check</a> · <a href="https://github.com/abhi12337/firebase-launch-check" rel="noopener">firebase-launch-check</a> · <a href="https://github.com/abhi12337/key-leak-check" rel="noopener">key-leak-check</a> · <a href="https://github.com/abhi12337/webhook-check" rel="noopener">webhook-check</a> · <a href="https://github.com/abhi12337/route-auth-check" rel="noopener">route-auth-check</a> · <a href="https://github.com/abhi12337/mcp-audit" rel="noopener">mcp-audit</a> · <a href="https://github.com/abhi12337/rules-file-audit" rel="noopener">rules-file-audit</a> · <a href="https://github.com/abhi12337/llm-cost-lint" rel="noopener">llm-cost-lint</a> · <a href="https://github.com/abhi12337/pg-launch-check" rel="noopener">pg-launch-check</a></p>
-    <p class="small">Not affiliated with Supabase, Google/Firebase, Stripe, Razorpay, OpenAI, Anthropic, or the PostgreSQL project.
-    All product names are trademarks of their owners. Static checks find known patterns; a clean report is not a guarantee.</p>
-  </div>
-</footer>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moved to AI Review Ready</title>
+<link rel="canonical" href="https://aireviewready.in/checks/guides/supabase-too-many-connections-supavisor/">
+<meta http-equiv="refresh" content="0; url=https://aireviewready.in/checks/guides/supabase-too-many-connections-supavisor/">
+<meta name="robots" content="noindex, follow">
+</head><body style="font:16px system-ui;max-width:640px;margin:48px auto;padding:0 16px">
+<h1>This page has moved</h1>
+<p>The free security checks and guides now live on <a href="https://aireviewready.in/checks/">AI Review Ready</a>.</p>
+<p><a href="https://aireviewready.in/checks/guides/supabase-too-many-connections-supavisor/">Go to the new page →</a></p>
+</body></html>
